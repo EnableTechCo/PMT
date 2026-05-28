@@ -10,6 +10,12 @@ import { Role } from "@/lib/db-types";
 import { randomBytes } from "node:crypto";
 import { createUser, findUserByEmail } from "@/lib/user-store";
 
+const ALLOWED_INVITE_ROLES = new Set<Role>([
+  Role.USER,
+  Role.SUPER_ADMIN,
+  Role.CLIENT,
+]);
+
 export async function POST(request: NextRequest) {
   try {
     const user = await getUserFromRequest(request);
@@ -21,7 +27,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, name, teamId } = await request.json();
+    const { email, name, teamId, role } = await request.json();
+    const selectedRole: Role = ALLOWED_INVITE_ROLES.has(role)
+      ? role
+      : Role.USER;
 
     if (!email || !name) {
       return NextResponse.json(
@@ -30,10 +39,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isInternalStaffEmail(email)) {
+    if (selectedRole !== Role.CLIENT && !isInternalStaffEmail(email)) {
       return NextResponse.json(
         {
-          error: "Admin invites must use @e-t.co.za email addresses",
+          error:
+            "Admin and super admin invites must use @e-t.co.za email addresses",
         },
         { status: 400 },
       );
@@ -47,20 +57,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate teamId if provided
-    if (!teamId) {
-      return NextResponse.json(
-        { error: "teamId is required" },
-        { status: 400 },
-      );
-    }
+    let team: { id: string; name: string } | null = null;
+    if (selectedRole !== Role.CLIENT) {
+      if (!teamId) {
+        return NextResponse.json(
+          { error: "teamId is required for admin and super admin invites" },
+          { status: 400 },
+        );
+      }
 
-    const team = await db.team.findUnique({ where: { id: teamId } });
-    if (!team) {
-      return NextResponse.json(
-        { error: "Invalid team selected" },
-        { status: 400 },
-      );
+      const resolvedTeam = await db.team.findUnique({ where: { id: teamId } });
+      if (!resolvedTeam) {
+        return NextResponse.json(
+          { error: "Invalid team selected" },
+          { status: 400 },
+        );
+      }
+      team = resolvedTeam;
     }
 
     const temporaryPasswordHash = await hashPassword(
@@ -71,9 +84,30 @@ export async function POST(request: NextRequest) {
       email,
       name,
       password: temporaryPasswordHash,
-      role: Role.USER,
-      teamId: teamId,
+      role: selectedRole,
+      teamId: team?.id ?? null,
     });
+
+    if (selectedRole === Role.CLIENT) {
+      const existingClient = await db.client.findUnique({ where: { email } });
+      if (existingClient) {
+        await db.client.update({
+          where: { id: existingClient.id },
+          data: {
+            name,
+            isInvited: true,
+          },
+        });
+      } else {
+        await db.client.create({
+          data: {
+            name,
+            email,
+            isInvited: true,
+          },
+        });
+      }
+    }
 
     const token = generateInviteToken();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -91,7 +125,7 @@ export async function POST(request: NextRequest) {
       email,
       token,
       name,
-      team.name,
+      team?.name,
       "/auth/reset-password?token=",
     );
 
@@ -101,6 +135,7 @@ export async function POST(request: NextRequest) {
         id: newAdmin.id,
         email: newAdmin.email,
         name: newAdmin.name,
+        role: newAdmin.role,
       },
     });
   } catch (error) {
