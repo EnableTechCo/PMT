@@ -1,0 +1,772 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import {
+  LayoutDashboard,
+  Briefcase,
+  Ticket,
+  Users2,
+  Search,
+  Plus,
+  LogOut,
+  Menu,
+  X,
+  Settings,
+  User,
+  ChevronDown,
+  Power,
+  Moon,
+  Sun,
+  BarChart3,
+  FolderKanban,
+  Handshake,
+  Bell,
+  FileText,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useTeam } from "@/contexts/TeamContext";
+import { SelectMenu } from "@/components/SelectMenu";
+import { onRealtimeChange } from "@/lib/realtime-events";
+
+interface AppNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  ticketId: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+interface DashboardLayoutProps {
+  children: React.ReactNode;
+}
+
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  const router = useRouter();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showQuickActions, setShowQuickActions] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const {
+    teams,
+    activeTeamId,
+    setActiveTeamId,
+    isAllTeams,
+    setAllTeamsMode,
+    loading: teamNavLoading,
+  } = useTeam();
+
+  const navigation =
+    user?.role === "SUPER_ADMIN"
+      ? [
+          { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+          { name: "Executive", href: "/executive", icon: BarChart3 },
+          { name: "Clients", href: "/clients", icon: Handshake },
+          { name: "Workload", href: "/workload", icon: Briefcase },
+          { name: "Tickets", href: "/tickets", icon: Ticket },
+          { name: "Docs", href: "/docs", icon: FileText },
+          { name: "Teams", href: "/teams", icon: Users2 },
+          { name: "Projects", href: "/projects", icon: FolderKanban },
+        ]
+      : [
+          { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+          { name: "Clients", href: "/clients", icon: Handshake },
+          { name: "Workload", href: "/workload", icon: Briefcase },
+          { name: "Tickets", href: "/tickets", icon: Ticket },
+          { name: "Docs", href: "/docs", icon: FileText },
+          { name: "Projects", href: "/projects", icon: FolderKanban },
+        ];
+  const quickActions = [
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "Tickets", href: "/tickets", icon: Ticket },
+    { name: "Workload", href: "/workload", icon: Briefcase },
+    { name: "Projects", href: "/projects", icon: FolderKanban },
+  ];
+
+  const pathname = usePathname();
+  const isClient = user?.role === "CLIENT";
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications");
+      if (!res.ok) return;
+      const data = (await res.json()) as AppNotification[];
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user || isClient) return;
+    void loadNotifications();
+  }, [user, isClient, pathname, loadNotifications]);
+
+  useEffect(() => {
+    if (!user || isClient) return;
+
+    const unsubscribe = onRealtimeChange((detail) => {
+      if (detail.table !== "Notification") return;
+      void loadNotifications();
+    });
+
+    return unsubscribe;
+  }, [user, isClient, loadNotifications]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const markNotificationsRead = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      await loadNotifications();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markAllRead: true }),
+      });
+      await loadNotifications();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      window.location.replace("/");
+    } catch (error) {
+      console.error("Logout error:", error);
+      window.location.replace("/");
+    }
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      console.log("Searching for:", searchQuery);
+    }
+  };
+
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-[var(--app-canvas)] text-[var(--text-primary)]">
+      {/* Mobile sidebar */}
+      <div
+        className={cn(
+          "fixed inset-0 z-50 lg:hidden",
+          sidebarOpen ? "block" : "hidden",
+        )}
+      >
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          onClick={() => setSidebarOpen(false)}
+        />
+        <div className="fixed left-0 top-0 h-full w-64 border-r border-[var(--border)] bg-gradient-to-b from-slate-50/95 to-[var(--sidebar)] dark:border-gray-800 dark:from-[#16161c] dark:to-[#13131a]">
+          <div className="flex items-center justify-between border-b border-[var(--border)] p-4 dark:border-gray-800">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
+                PMT HUB
+              </h1>
+            </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="text-gray-700 hover:text-gray-900 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Mobile Search */}
+          <div className="border-b border-[var(--border)] p-4 dark:border-gray-800">
+            <form onSubmit={handleSearch} className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-md border border-gray-200 bg-gray-50 py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-500 outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/15 dark:border-gray-700 dark:bg-gray-900/80 dark:text-white dark:focus:bg-gray-900"
+              />
+            </form>
+          </div>
+
+          <nav className="flex-1 space-y-0.5 p-3">
+            {navigation.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out",
+                    isActive
+                      ? "bg-brand-600/[0.12] text-brand-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)] ring-1 ring-brand-500/20 dark:bg-brand-600/15 dark:text-brand-200 dark:ring-brand-400/25"
+                      : "text-gray-600 hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
+                  )}
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <item.icon
+                    className={cn(
+                      "h-[18px] w-[18px] shrink-0 transition-transform duration-200 ease-out group-hover:scale-110",
+                      isActive
+                        ? "text-brand-600 dark:text-brand-400"
+                        : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
+                    )}
+                  />
+                  <span>{item.name}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {!isClient && (
+            <div className="border-t border-[var(--border)] p-4 dark:border-gray-800">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500">
+                  Workspace
+                </h3>
+                {user.role === "SUPER_ADMIN" && (
+                  <Link
+                    href="/teams"
+                    className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    Manage
+                  </Link>
+                )}
+              </div>
+              {teamNavLoading ? (
+                <p className="px-1 text-xs text-gray-500">Loading teams…</p>
+              ) : user.role === "SUPER_ADMIN" ? (
+                <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAllTeamsMode(true);
+                      setSidebarOpen(false);
+                    }}
+                    className={cn(
+                      "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                      isAllTeams
+                        ? "bg-brand-50 font-medium text-brand-800 dark:bg-brand-950/50 dark:text-brand-200"
+                        : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+                    )}
+                  >
+                    All teams
+                  </button>
+                  {teams.map((team) => (
+                    <button
+                      key={team.id}
+                      type="button"
+                      onClick={() => {
+                        setAllTeamsMode(false);
+                        setActiveTeamId(team.id);
+                        setSidebarOpen(false);
+                      }}
+                      className={cn(
+                        "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                        !isAllTeams && activeTeamId === team.id
+                          ? "bg-gray-100 font-medium text-gray-900 dark:bg-gray-800 dark:text-white"
+                          : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+                      )}
+                    >
+                      {team.name}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <SelectMenu
+                  value={activeTeamId}
+                  onChange={(v) => {
+                    setActiveTeamId(v);
+                    setSidebarOpen(false);
+                  }}
+                  disabled={teams.length === 0}
+                  options={teams.map((t) => ({
+                    value: t.id,
+                    label: t.name,
+                  }))}
+                  placeholder="Choose team"
+                  className="w-full"
+                />
+              )}
+            </div>
+          )}
+
+          {/* Mobile User Info */}
+          <div className="border-t border-[var(--border)] p-4 dark:border-gray-800">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                  {user.name}
+                </p>
+                <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                  {user.role}
+                </p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop sidebar */}
+      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-50 lg:block lg:w-64">
+        <div className="flex h-full flex-col border-r border-[var(--border)] bg-gradient-to-b from-slate-50/95 to-[var(--sidebar)] dark:border-gray-800 dark:from-[#16161c] dark:to-[#13131a]">
+          <div className="flex items-center gap-2 border-b border-[var(--border)] p-4 dark:border-gray-800">
+            <h1 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
+              PMT HUB
+            </h1>
+          </div>
+
+          <div className="border-b border-[var(--border)] p-4 dark:border-gray-800">
+            <form onSubmit={handleSearch} className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-md border border-gray-200 bg-gray-50 py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-500 outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/15 dark:border-gray-700 dark:bg-gray-900/80 dark:text-white dark:focus:bg-gray-900"
+              />
+            </form>
+          </div>
+
+          <nav className="flex-1 space-y-0.5 p-3">
+            {navigation.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out mb-1",
+                    isActive
+                      ? "bg-brand-600/[0.12] text-brand-800 ring-1 ring-brand-500/20 dark:bg-brand-600/15 dark:text-brand-200 dark:ring-brand-400/25"
+                      : "text-gray-600 hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
+                  )}
+                >
+                  <item.icon
+                    className={cn(
+                      "h-[18px] w-[18px] shrink-0 transition-transform duration-200 ease-out group-hover:scale-110",
+                      isActive
+                        ? "text-brand-600 dark:text-brand-400"
+                        : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
+                    )}
+                  />
+                  <span>{item.name}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {!isClient && (
+            <div className="border-t border-[var(--border)] p-4 dark:border-gray-800">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500">
+                  Workspace
+                </h3>
+                {user.role === "SUPER_ADMIN" && (
+                  <Link
+                    href="/teams"
+                    className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                  >
+                    Manage
+                  </Link>
+                )}
+              </div>
+              {teamNavLoading ? (
+                <p className="px-1 text-xs text-gray-500">Loading teams…</p>
+              ) : user.role === "SUPER_ADMIN" ? (
+                <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => setAllTeamsMode(true)}
+                    className={cn(
+                      "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                      isAllTeams
+                        ? "bg-brand-50 font-medium text-brand-800 dark:bg-brand-950/50 dark:text-brand-200"
+                        : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+                    )}
+                  >
+                    All teams
+                  </button>
+                  {teams.map((team) => (
+                    <button
+                      key={team.id}
+                      type="button"
+                      onClick={() => {
+                        setAllTeamsMode(false);
+                        setActiveTeamId(team.id);
+                      }}
+                      className={cn(
+                        "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                        !isAllTeams && activeTeamId === team.id
+                          ? "bg-gray-100 font-medium text-gray-900 dark:bg-gray-800 dark:text-white"
+                          : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+                      )}
+                    >
+                      {team.name}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <SelectMenu
+                  value={activeTeamId}
+                  onChange={setActiveTeamId}
+                  disabled={teams.length === 0}
+                  options={teams.map((t) => ({
+                    value: t.id,
+                    label: t.name,
+                  }))}
+                  placeholder="Choose team"
+                  className="w-full"
+                />
+              )}
+            </div>
+          )}
+
+          {/* Desktop User Info */}
+          <div className="relative border-t border-[var(--border)] p-4 dark:border-gray-800">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                  {user.name}
+                </p>
+                <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                  {user.role}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                aria-expanded={showUserMenu}
+                aria-haspopup="true"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* User Menu Dropdown */}
+            {showUserMenu && (
+              <div className="absolute bottom-16 left-3 right-3 overflow-hidden rounded-lg border border-[var(--border)] bg-white shadow-card dark:border-gray-700 dark:bg-[#1c1c24]">
+                <div className="space-y-0.5 p-2">
+                  <Link
+                    href="/settings"
+                    onClick={() => setShowUserMenu(false)}
+                    className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/5"
+                  >
+                    <User className="h-4 w-4 text-gray-500" />
+                    <span className="font-medium">Profile</span>
+                  </Link>
+                  <Link
+                    href="/settings"
+                    onClick={() => setShowUserMenu(false)}
+                    className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/5"
+                  >
+                    <Settings className="h-4 w-4 text-gray-500" />
+                    <span className="font-medium">Settings</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/5"
+                  >
+                    {theme === "light" ? (
+                      <Moon className="h-4 w-4 text-gray-500" />
+                    ) : (
+                      <Sun className="h-4 w-4 text-gray-500" />
+                    )}
+                    <span className="font-medium">
+                      {theme === "light" ? "Dark mode" : "Light mode"}
+                    </span>
+                  </button>
+                  <div className="my-1 h-px bg-[var(--border)] dark:bg-gray-700" />
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                  >
+                    <Power className="h-4 w-4" />
+                    <span className="font-medium">Sign out</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Top bar */}
+      <div className="lg:pl-64">
+        <div className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--surface-elevated)]/95 backdrop-blur-md dark:border-gray-800 dark:bg-[#16161c]/95">
+          <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+            {/* Left side - Navigation and Search */}
+            <div className="flex items-center space-x-6">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden text-gray-700 hover:text-gray-900 transition-colors p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+
+              {/* Breadcrumb and Page Title */}
+              <div className="hidden lg:flex items-center space-x-3">
+                <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+                  <span className="cursor-pointer transition-colors hover:text-gray-900 dark:hover:text-white">
+                    Home
+                  </span>
+                  <span className="text-gray-300 dark:text-gray-600">/</span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    Workspace
+                  </span>
+                </div>
+              </div>
+
+              {/* Desktop Search */}
+              <div className="relative hidden lg:block">
+                <form onSubmit={handleSearch} className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Search workspace…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-72 rounded-md border border-gray-200 bg-gray-50 py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-500 outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/15 dark:border-gray-700 dark:bg-gray-900/80 dark:text-white dark:focus:bg-gray-900 xl:w-80"
+                  />
+                </form>
+              </div>
+
+              {/* Mobile Search */}
+              <div className="lg:hidden">
+                <button className="text-gray-700 hover:text-gray-900 transition-colors p-2 hover:bg-gray-100 rounded-lg">
+                  <Search className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Right side - Actions and User */}
+            <div className="flex items-center space-x-4">
+              {!isClient ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowQuickActions(false);
+                      setShowUserMenu(false);
+                      setNotifOpen((prev) => {
+                        const next = !prev;
+                        if (next) void loadNotifications();
+                        return next;
+                      });
+                    }}
+                    className="relative rounded-md p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+                    title="Notifications"
+                  >
+                    <Bell className="h-5 w-5" />
+                    {unreadCount > 0 ? (
+                      <span className="absolute right-1 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    ) : null}
+                  </button>
+
+                  {notifOpen ? (
+                    <div className="absolute right-0 top-12 z-50 w-[min(100vw-2rem,22rem)] overflow-hidden rounded-lg border border-[var(--border)] bg-white shadow-card dark:border-gray-700 dark:bg-[#1c1c24]">
+                      <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2 dark:border-gray-700">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                          Notifications
+                        </p>
+                        {unreadCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => void markAllNotificationsRead()}
+                            className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                          >
+                            Mark all read
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="max-h-80 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <p className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                            No notifications yet
+                          </p>
+                        ) : (
+                          notifications.map((n) => (
+                            <button
+                              type="button"
+                              key={n.id}
+                              onClick={() => {
+                                void (async () => {
+                                  if (!n.read) {
+                                    await markNotificationsRead([n.id]);
+                                  }
+                                  setNotifOpen(false);
+                                  if (n.ticketId) {
+                                    router.push(`/tickets/${n.ticketId}`);
+                                  }
+                                })();
+                              }}
+                              className={cn(
+                                "w-full border-b border-[var(--border)] px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5",
+                                !n.read &&
+                                  "bg-brand-600/[0.06] dark:bg-brand-600/10",
+                              )}
+                            >
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                {n.title}
+                              </p>
+                              {n.body ? (
+                                <p className="mt-0.5 line-clamp-2 text-xs text-gray-600 dark:text-gray-400">
+                                  {n.body}
+                                </p>
+                              ) : null}
+                              <p className="mt-1 text-[11px] text-gray-400">
+                                {new Date(n.createdAt).toLocaleString()}
+                              </p>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Quick Actions */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotifOpen(false);
+                    setShowUserMenu(false);
+                    setShowQuickActions(!showQuickActions);
+                  }}
+                  className="rounded-md bg-brand-600 p-2 text-white shadow-sm transition-colors hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950"
+                  title="Quick actions"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+
+                {showQuickActions && (
+                  <div className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-lg border border-[var(--border)] bg-white shadow-card dark:border-gray-700 dark:bg-[#1c1c24]">
+                    <div className="p-2">
+                      <h3 className="mb-1 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                        Quick actions
+                      </h3>
+                      <div className="space-y-0.5">
+                        {quickActions.map((action) => (
+                          <Link
+                            key={action.name}
+                            href={action.href}
+                            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/5"
+                            onClick={() => setShowQuickActions(false)}
+                          >
+                            <action.icon className="h-4 w-4 text-gray-500" />
+                            <span className="font-medium">{action.name}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* User Menu (Desktop) */}
+              <div className="hidden lg:flex items-center space-x-4">
+                {/* User Info */}
+                <div className="flex items-center gap-3">
+                  <div className="hidden text-right sm:block">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {user.name}
+                    </p>
+                    <p className="text-xs capitalize text-gray-500 dark:text-gray-400">
+                      {user.role.toLowerCase().replace(/_/g, " ")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowUserMenu(!showUserMenu)}
+                    className="relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950"
+                    aria-expanded={showUserMenu}
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white shadow-sm ring-2 ring-white transition-colors hover:bg-brand-600 dark:ring-gray-900">
+                      {user.name.charAt(0).toUpperCase()}
+                    </div>
+                  </button>
+                </div>
+
+                {/* Logout Button */}
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="rounded-md p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+                  title="Sign out"
+                >
+                  <Power className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="lg:pl-64">
+        {/* Page content */}
+        <main className="p-6">{children}</main>
+      </div>
+
+      {/* Backdrop for dropdowns */}
+      {(showQuickActions || showUserMenu || notifOpen) && (
+        <div
+          className="fixed inset-0 z-30"
+          onClick={() => {
+            setShowQuickActions(false);
+            setShowUserMenu(false);
+            setNotifOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}

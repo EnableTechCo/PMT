@@ -1,0 +1,1185 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTeam } from "@/contexts/TeamContext";
+import DashboardLayout from "@/components/DashboardLayout";
+import {
+  Plus,
+  Mail,
+  User,
+  X,
+  CheckCircle,
+  XCircle,
+  FolderKanban,
+  KeyRound,
+  RefreshCw,
+  Pencil,
+  Trash2,
+  Eye,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { onRealtimeChange } from "@/lib/realtime-events";
+
+interface Client {
+  id: string;
+  name: string;
+  email: string;
+  isInvited: boolean;
+  invitationStatus: "NOT_INVITED" | "INVITED_NOT_CONFIRMED" | "ACTIVATED";
+  hasSignedIn?: boolean;
+  projectCount: number;
+  createdAt: string;
+}
+
+interface ClientProject {
+  id: string;
+  name: string;
+  status: string;
+  health: string;
+  progress: number;
+  updatedAt: string;
+}
+
+interface GithubRepoOption {
+  owner: string;
+  name: string;
+  url: string;
+  fullName: string;
+}
+
+type ConfirmAction = "delete" | "resendInvite" | "resetPassword";
+
+export default function ClientsPage() {
+  const { user } = useAuth();
+  const { teams, activeTeamId } = useTeam();
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showProjectsModal, setShowProjectsModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>("delete");
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [confirmClient, setConfirmClient] = useState<Client | null>(null);
+  const [clientProjects, setClientProjects] = useState<ClientProject[]>([]);
+  const [loadingClientProjects, setLoadingClientProjects] = useState(false);
+  const [editClient, setEditClient] = useState({
+    id: "",
+    name: "",
+    email: "",
+    isInvited: false,
+  });
+  const [newClient, setNewClient] = useState({
+    name: "",
+    email: "",
+    isInvited: false,
+  });
+  const [newProject, setNewProject] = useState({
+    name: "",
+    description: "",
+    teamId: "",
+    progress: 0,
+    health: "GREEN",
+    status: "PLANNING",
+  });
+  const [availableGithubRepos, setAvailableGithubRepos] = useState<
+    GithubRepoOption[]
+  >([]);
+  const [selectedGithubRepos, setSelectedGithubRepos] = useState<string[]>([]);
+  const [loadingGithubRepos, setLoadingGithubRepos] = useState(false);
+  const [githubReposError, setGithubReposError] = useState("");
+
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onRealtimeChange((detail) => {
+      if (detail.table !== "Client" && detail.table !== "Project") return;
+      void fetchClients();
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const fetchClients = async () => {
+    try {
+      const response = await fetch("/api/clients");
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch clients");
+      }
+
+      const data = await response.json();
+      setClients(data);
+    } catch {
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newClient),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create client");
+      }
+
+      setNewClient({ name: "", email: "", isInvited: false });
+      setShowCreateModal(false);
+      fetchClients();
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Failed to create client",
+      );
+    }
+  };
+
+  const openCreateProjectForClient = (client: Client) => {
+    setSelectedClient(client);
+    setNewProject({
+      name: "",
+      description: "",
+      teamId: activeTeamId || teams[0]?.id || "",
+      progress: 0,
+      health: "GREEN",
+      status: "PLANNING",
+    });
+    setSelectedGithubRepos([]);
+    setGithubReposError("");
+    setShowProjectModal(true);
+    void fetchAvailableGithubRepos();
+  };
+
+  const fetchAvailableGithubRepos = async () => {
+    setLoadingGithubRepos(true);
+    setGithubReposError("");
+
+    try {
+      const response = await fetch("/api/github/repos");
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to load GitHub repositories");
+      }
+
+      const repos = (await response.json()) as Array<{
+        name?: string;
+        full_name?: string;
+        html_url?: string;
+        owner?: { login?: string };
+      }>;
+
+      const normalized = repos
+        .map((repo) => {
+          const owner = repo.owner?.login;
+          const name = repo.name;
+          const url = repo.html_url;
+
+          if (!owner || !name || !url) {
+            return null;
+          }
+
+          return {
+            owner,
+            name,
+            url,
+            fullName: repo.full_name || `${owner}/${name}`,
+          };
+        })
+        .filter((repo): repo is GithubRepoOption => repo !== null);
+
+      setAvailableGithubRepos(normalized);
+    } catch (err) {
+      setAvailableGithubRepos([]);
+      setGithubReposError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load GitHub repositories",
+      );
+    } finally {
+      setLoadingGithubRepos(false);
+    }
+  };
+
+  const openEditClient = (client: Client) => {
+    setEditClient({
+      id: client.id,
+      name: client.name,
+      email: client.email,
+      isInvited: client.isInvited,
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const response = await fetch(`/api/clients/${editClient.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: editClient.name,
+          email: editClient.email,
+          isInvited: editClient.isInvited,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to update client");
+      }
+
+      setShowEditModal(false);
+      await fetchClients();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update client");
+    }
+  };
+
+  const closeConfirmModal = (force = false) => {
+    if (confirmLoading && !force) return;
+    setShowConfirmModal(false);
+    setConfirmClient(null);
+  };
+
+  const openConfirmModal = (action: ConfirmAction, client: Client) => {
+    setConfirmAction(action);
+    setConfirmClient(client);
+    setShowConfirmModal(true);
+  };
+
+  const handleDeleteClient = async (client: Client) => {
+    setConfirmLoading(true);
+
+    try {
+      const response = await fetch(`/api/clients/${client.id}`, {
+        method: "DELETE",
+      });
+
+      if (response.status === 404) {
+        await fetchClients();
+        closeConfirmModal(true);
+        return;
+      }
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to delete client");
+      }
+
+      await fetchClients();
+      closeConfirmModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete client");
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const handleResendInvite = async (client: Client) => {
+    setConfirmLoading(true);
+    try {
+      const response = await fetch(`/api/clients/${client.id}/resend-invite`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to resend invitation");
+      }
+
+      await fetchClients();
+      closeConfirmModal(true);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to resend invitation",
+      );
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (client: Client) => {
+    setConfirmLoading(true);
+    try {
+      const response = await fetch(`/api/clients/${client.id}/reset-password`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to send reset password email");
+      }
+      closeConfirmModal(true);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to send reset password email",
+      );
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmClient) return;
+
+    if (confirmAction === "delete") {
+      await handleDeleteClient(confirmClient);
+      return;
+    }
+
+    if (confirmAction === "resendInvite") {
+      await handleResendInvite(confirmClient);
+      return;
+    }
+
+    await handleResetPassword(confirmClient);
+  };
+
+  const handleViewClientProjects = async (client: Client) => {
+    setSelectedClient(client);
+    setShowProjectsModal(true);
+    setLoadingClientProjects(true);
+    setClientProjects([]);
+    try {
+      const response = await fetch(`/api/clients/${client.id}/projects`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to load client projects");
+      }
+      const projects = (await response.json()) as ClientProject[];
+      setClientProjects(Array.isArray(projects) ? projects : []);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load client projects",
+      );
+      setShowProjectsModal(false);
+    } finally {
+      setLoadingClientProjects(false);
+    }
+  };
+
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!selectedClient) {
+      setError("Please select a client");
+      return;
+    }
+
+    if (!newProject.teamId) {
+      setError("Please select a team before creating a project");
+      return;
+    }
+
+    try {
+      const githubRepos = selectedGithubRepos
+        .map((repoUrl) =>
+          availableGithubRepos.find((repo) => repo.url === repoUrl),
+        )
+        .filter((repo): repo is GithubRepoOption => Boolean(repo))
+        .map((repo) => ({
+          owner: repo.owner,
+          name: repo.name,
+          url: repo.url,
+        }));
+
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: newProject.name,
+          description: newProject.description,
+          teamDescription: newProject.description,
+          githubRepos,
+          teamId: newProject.teamId,
+          clientId: selectedClient.id,
+          progress: newProject.progress,
+          health: newProject.health,
+          status: newProject.status,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to create project");
+      }
+
+      setShowProjectModal(false);
+      setSelectedClient(null);
+      setNewProject({
+        name: "",
+        description: "",
+        teamId: "",
+        progress: 0,
+        health: "GREEN",
+        status: "PLANNING",
+      });
+      setSelectedGithubRepos([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create project");
+    }
+  };
+
+  const canManageClients =
+    user?.role === "USER" || user?.role === "SUPER_ADMIN";
+  const invitedCount = clients.filter((client) => client.isInvited).length;
+  const activatedCount = clients.filter(
+    (client) => client.invitationStatus === "ACTIVATED",
+  ).length;
+  const totalClientProjects = clients.reduce(
+    (sum, client) => sum + (client.projectCount ?? 0),
+    0,
+  );
+
+  if (!user || !canManageClients) {
+    return (
+      <DashboardLayout>
+        <div className="text-center py-12">
+          <p className="text-gray-600 dark:text-gray-400 text-lg">
+            Access denied
+          </p>
+          <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
+            Only internal staff can access this page
+          </p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="w-full">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              Clients
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Manage your client relationships
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="btn-primary flex items-center space-x-2"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Add Client</span>
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <p className="text-red-400">{error}</p>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+          </div>
+        ) : clients.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <User className="w-8 h-8 text-gray-500 dark:text-gray-400" />
+            </div>
+            <p className="text-gray-600 dark:text-gray-400 text-lg mb-2">
+              No clients found
+            </p>
+            <p className="text-gray-500 dark:text-gray-500 text-sm mb-6">
+              Get started by adding your first client
+            </p>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="btn-primary"
+            >
+              Add your first client
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-800 dark:bg-[#1c1c24]">
+                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Total clients
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+                  {clients.length}
+                </p>
+              </div>
+              <div className="rounded-xl border border-green-200 bg-green-50/70 px-4 py-3 shadow-sm dark:border-green-900/40 dark:bg-green-900/10">
+                <p className="text-xs uppercase tracking-wide text-green-700 dark:text-green-300">
+                  Invited
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-green-800 dark:text-green-200">
+                  {invitedCount}
+                </p>
+              </div>
+              <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 shadow-sm dark:border-sky-900/40 dark:bg-sky-900/10">
+                <p className="text-xs uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                  Activated
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-sky-800 dark:text-sky-200">
+                  {activatedCount}
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 shadow-sm dark:border-amber-900/40 dark:bg-amber-900/10">
+                <p className="text-xs uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  Total client projects
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-amber-800 dark:text-amber-200">
+                  {totalClientProjects}
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg dark:border-gray-800 dark:bg-[#1c1c24]">
+              <div className="overflow-x-auto">
+                <table className="min-w-[1050px] w-full text-sm">
+                  <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur dark:bg-gray-900/95">
+                    <tr className="border-b border-gray-200 dark:border-gray-800">
+                      <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
+                        Client
+                      </th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
+                        Contact
+                      </th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
+                        Status
+                      </th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
+                        Created
+                      </th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clients.map((client) => (
+                      <tr
+                        key={client.id}
+                        className="border-b border-gray-100 transition-colors hover:bg-gray-50/80 dark:border-gray-800 dark:hover:bg-gray-800/30"
+                      >
+                        <td className="px-5 py-4 align-top">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500/20 to-indigo-500/20 text-sm font-semibold text-sky-700 dark:text-sky-300">
+                              {client.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900 dark:text-white">
+                                {client.name}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                ID: {client.id.slice(0, 8)}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <div className="flex items-start gap-2 text-gray-700 dark:text-gray-300">
+                            <Mail className="mt-0.5 h-4 w-4 text-gray-500 dark:text-gray-400" />
+                            <span className="break-all">{client.email}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <div className="inline-flex items-center gap-2">
+                            {client.invitationStatus === "ACTIVATED" ? (
+                              <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                            ) : client.invitationStatus ===
+                              "INVITED_NOT_CONFIRMED" ? (
+                              <XCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                            )}
+                            <span
+                              className={cn(
+                                "rounded-full border px-2.5 py-1 text-xs font-medium",
+                                client.invitationStatus === "ACTIVATED"
+                                  ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300"
+                                  : client.invitationStatus ===
+                                      "INVITED_NOT_CONFIRMED"
+                                    ? "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300"
+                                    : "border-gray-300 bg-gray-100 text-gray-700 dark:border-gray-600 dark:bg-gray-500/10 dark:text-gray-300",
+                              )}
+                            >
+                              {client.invitationStatus === "ACTIVATED"
+                                ? "Activated"
+                                : client.invitationStatus ===
+                                    "INVITED_NOT_CONFIRMED"
+                                  ? "Invited - Not activated"
+                                  : "Pending invite"}
+                            </span>
+                            {client.invitationStatus === "ACTIVATED" &&
+                            client.hasSignedIn ? (
+                              <span className="rounded-full border border-sky-300 bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300">
+                                Signed in
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 align-top text-gray-600 dark:text-gray-400">
+                          {new Date(client.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              onClick={() => handleViewClientProjects(client)}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
+                              title="View projects"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              Projects
+                            </button>
+                            <button
+                              onClick={() => openCreateProjectForClient(client)}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
+                              title="Add project"
+                            >
+                              <FolderKanban className="h-3.5 w-3.5" />
+                              Add project
+                            </button>
+                            <button
+                              onClick={() => openEditClient(client)}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-sky-400 hover:text-sky-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-sky-400 dark:hover:text-sky-300"
+                              title="Edit client"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() =>
+                                openConfirmModal("resendInvite", client)
+                              }
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-emerald-400 hover:text-emerald-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-emerald-400 dark:hover:text-emerald-300"
+                              title="Resend invite"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                              Invite
+                            </button>
+                            <button
+                              onClick={() =>
+                                openConfirmModal("resetPassword", client)
+                              }
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-amber-400 hover:text-amber-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-amber-400 dark:hover:text-amber-300"
+                              title="Send password reset"
+                            >
+                              <KeyRound className="h-3.5 w-3.5" />
+                              Reset
+                            </button>
+                            <button
+                              onClick={() => openConfirmModal("delete", client)}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-300 px-2.5 text-xs font-medium text-red-700 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
+                              title="Delete client"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCreateModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowCreateModal(false)}
+            />
+
+            <div className="relative w-full max-w-md bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl rounded-2xl border border-gray-200/80 dark:border-gray-800/50 shadow-2xl animate-fade-in">
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800/50">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                    <Plus className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                      Add New Client
+                    </h2>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Create a new client record
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors p-3 hover:bg-gray-100 dark:hover:bg-gray-800/50 rounded-lg hover:scale-110 border border-gray-200 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600/50"
+                  title="Close"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateClient} className="p-6 space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Client Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newClient.name}
+                    onChange={(e) =>
+                      setNewClient({ ...newClient, name: e.target.value })
+                    }
+                    placeholder="Enter client name..."
+                    className="w-full input-modern"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={newClient.email}
+                    onChange={(e) =>
+                      setNewClient({ ...newClient, email: e.target.value })
+                    }
+                    placeholder="Enter client email..."
+                    className="w-full input-modern"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-3 p-4 bg-gray-50 dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-700/50">
+                  <input
+                    id="isInvited"
+                    type="checkbox"
+                    checked={newClient.isInvited}
+                    onChange={(e) =>
+                      setNewClient({
+                        ...newClient,
+                        isInvited: e.target.checked,
+                      })
+                    }
+                    className="w-4 h-4 text-indigo-600 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 rounded focus:ring-indigo-500 focus:ring-2"
+                  />
+                  <label
+                    htmlFor="isInvited"
+                    className="text-sm text-gray-700 dark:text-gray-300"
+                  >
+                    Send invitation email (allows client to log in)
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 pt-6 border-t border-gray-200 dark:border-gray-800/50">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!newClient.name.trim() || !newClient.email.trim()}
+                    className={cn(
+                      "btn-primary",
+                      (!newClient.name.trim() || !newClient.email.trim()) &&
+                        "opacity-50 cursor-not-allowed",
+                    )}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <Plus className="w-4 h-4" />
+                      <span>Create Client</span>
+                    </div>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {showConfirmModal && confirmClient && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={closeConfirmModal}
+            />
+            <div className="relative w-full max-w-md rounded-2xl border border-gray-200/80 bg-white/95 p-6 shadow-2xl backdrop-blur-xl dark:border-gray-800/50 dark:bg-gray-900/95">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {confirmAction === "delete"
+                  ? `Delete ${confirmClient.name}?`
+                  : confirmAction === "resendInvite"
+                    ? `Resend invite to ${confirmClient.name}?`
+                    : `Send password reset to ${confirmClient.name}?`}
+              </h3>
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                {confirmAction === "delete"
+                  ? "This action cannot be undone. Client records with linked projects or tickets cannot be deleted."
+                  : confirmAction === "resendInvite"
+                    ? "A new invitation email will be sent to this client."
+                    : "A password reset email will be sent to this client."}
+              </p>
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeConfirmModal}
+                  disabled={confirmLoading}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmAction}
+                  disabled={confirmLoading}
+                  className={cn(
+                    "inline-flex h-9 items-center rounded-md px-4 text-sm font-medium text-white transition",
+                    confirmAction === "delete"
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-indigo-600 hover:bg-indigo-700",
+                    confirmLoading && "cursor-not-allowed opacity-70",
+                  )}
+                >
+                  {confirmLoading
+                    ? "Working..."
+                    : confirmAction === "delete"
+                      ? "Delete Client"
+                      : confirmAction === "resendInvite"
+                        ? "Resend Invite"
+                        : "Send Reset Email"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showProjectModal && selectedClient && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowProjectModal(false)}
+            />
+
+            <div className="relative w-full max-w-lg rounded-2xl border border-gray-200/80 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-gray-800/50 dark:bg-gray-900/95">
+              <div className="flex items-center justify-between border-b border-gray-200 p-6 dark:border-gray-800/50">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                    Add Project for {selectedClient.name}
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Link a new project directly to this client
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowProjectModal(false)}
+                  className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-white"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateProject} className="space-y-5 p-6">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Project Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newProject.name}
+                    onChange={(e) =>
+                      setNewProject({ ...newProject, name: e.target.value })
+                    }
+                    placeholder="Enter project name..."
+                    className="w-full input-modern"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Team *
+                  </label>
+                  <select
+                    required
+                    value={newProject.teamId}
+                    onChange={(e) =>
+                      setNewProject({ ...newProject, teamId: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">Select team</option>
+                    {teams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Team Description
+                  </label>
+                  <textarea
+                    value={newProject.description}
+                    onChange={(e) =>
+                      setNewProject({
+                        ...newProject,
+                        description: e.target.value,
+                      })
+                    }
+                    rows={3}
+                    placeholder="Describe the team context and project scope..."
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Linked GitHub Repositories
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void fetchAvailableGithubRepos()}
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-300 dark:hover:text-indigo-200"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {loadingGithubRepos ? (
+                    <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
+                      Loading repositories...
+                    </p>
+                  ) : githubReposError ? (
+                    <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+                      {githubReposError}
+                    </p>
+                  ) : availableGithubRepos.length === 0 ? (
+                    <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
+                      No repositories available for your connected GitHub
+                      account.
+                    </p>
+                  ) : (
+                    <div className="max-h-44 space-y-2 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/40">
+                      {availableGithubRepos.map((repo) => {
+                        const checked = selectedGithubRepos.includes(repo.url);
+                        return (
+                          <label
+                            key={repo.url}
+                            className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-200"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedGithubRepos((prev) => [
+                                    ...prev,
+                                    repo.url,
+                                  ]);
+                                  return;
+                                }
+                                setSelectedGithubRepos((prev) =>
+                                  prev.filter((url) => url !== repo.url),
+                                );
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
+                            />
+                            <span>{repo.fullName}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 border-t border-gray-200 pt-4 dark:border-gray-800/50">
+                  <button
+                    type="button"
+                    onClick={() => setShowProjectModal(false)}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!newProject.name.trim() || !newProject.teamId}
+                    className={cn(
+                      "btn-primary",
+                      (!newProject.name.trim() || !newProject.teamId) &&
+                        "cursor-not-allowed opacity-50",
+                    )}
+                  >
+                    Create Project
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {showEditModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowEditModal(false)}
+            />
+            <div className="relative w-full max-w-md rounded-2xl border border-gray-200/80 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-gray-800/50 dark:bg-gray-900/95">
+              <div className="flex items-center justify-between border-b border-gray-200 p-6 dark:border-gray-800/50">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Edit Client
+                </h2>
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-white"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <form onSubmit={handleUpdateClient} className="space-y-5 p-6">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editClient.name}
+                    onChange={(e) =>
+                      setEditClient({ ...editClient, name: e.target.value })
+                    }
+                    className="w-full input-modern"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={editClient.email}
+                    onChange={(e) =>
+                      setEditClient({ ...editClient, email: e.target.value })
+                    }
+                    className="w-full input-modern"
+                  />
+                </div>
+                <div className="flex items-center space-x-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700/50 dark:bg-gray-800/30">
+                  <input
+                    id="editIsInvited"
+                    type="checkbox"
+                    checked={editClient.isInvited}
+                    onChange={(e) =>
+                      setEditClient({
+                        ...editClient,
+                        isInvited: e.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <label
+                    htmlFor="editIsInvited"
+                    className="text-sm text-gray-700 dark:text-gray-300"
+                  >
+                    Mark as invited
+                  </label>
+                </div>
+                <div className="flex items-center justify-end space-x-3 border-t border-gray-200 pt-4 dark:border-gray-800/50">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {showProjectsModal && selectedClient && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowProjectsModal(false)}
+            />
+            <div className="relative w-full max-w-2xl rounded-2xl border border-gray-200/80 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-gray-800/50 dark:bg-gray-900/95">
+              <div className="flex items-center justify-between border-b border-gray-200 p-6 dark:border-gray-800/50">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  {selectedClient.name} Projects
+                </h2>
+                <button
+                  onClick={() => setShowProjectsModal(false)}
+                  className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-white"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto p-6">
+                {loadingClientProjects ? (
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Loading projects…
+                  </p>
+                ) : clientProjects.length === 0 ? (
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    No projects for this client yet.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {clientProjects.map((project) => (
+                      <div
+                        key={project.id}
+                        className="rounded-lg border border-gray-200 p-4 dark:border-gray-700"
+                      >
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {project.name}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                          {project.status} · {project.health} ·{" "}
+                          {project.progress}%
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}
