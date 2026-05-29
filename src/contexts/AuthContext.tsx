@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { supabaseClient } from "@/lib/supabase";
+import type { EmailOtpType } from "@supabase/supabase-js";
 
 interface User {
   id: string;
@@ -62,10 +63,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(error.error || "Login failed");
     }
 
-    await response.json().catch(() => ({}));
+    const data = await response.json();
+    setUser(data.user);
   };
 
   const completePasswordlessLogin = async () => {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("code");
+    const tokenHash = url.searchParams.get("token_hash");
+    const typeParam = url.searchParams.get("type");
+
+    if (code) {
+      const { error: exchangeError } =
+        await supabaseClient.auth.exchangeCodeForSession(code);
+
+      if (exchangeError) {
+        throw new Error(exchangeError.message || "Magic link is invalid.");
+      }
+    } else if (tokenHash && typeParam) {
+      const allowedTypes: EmailOtpType[] = [
+        "magiclink",
+        "email",
+        "recovery",
+        "invite",
+        "email_change",
+      ];
+
+      if (!allowedTypes.includes(typeParam as EmailOtpType)) {
+        throw new Error("Unsupported magic link type.");
+      }
+
+      const { error: verifyError } = await supabaseClient.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: typeParam as EmailOtpType,
+      });
+
+      if (verifyError) {
+        throw new Error(verifyError.message || "Magic link is invalid.");
+      }
+    }
+
     const {
       data: { session },
       error: sessionError,

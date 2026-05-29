@@ -1,12 +1,11 @@
 import nodemailer from "nodemailer";
-import { Resend } from "resend";
 
 function parseBoolean(value: string | undefined, fallback: boolean) {
   if (value === undefined) return fallback;
   return value.toLowerCase() === "true";
 }
 
-type EmailProvider = "supabase-function" | "resend" | "smtp";
+type EmailProvider = "supabase-function" | "smtp";
 
 type Diagnostics = {
   provider: EmailProvider;
@@ -31,6 +30,12 @@ type SendEmailArgs = {
   text: string;
 };
 
+function hasSmtpCredentials() {
+  return Boolean(
+    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD,
+  );
+}
+
 const smtpPort = parseInt(process.env.SMTP_PORT || "465", 10);
 const smtpSecure = parseBoolean(process.env.SMTP_SECURE, smtpPort === 465);
 
@@ -48,13 +53,12 @@ const smtpConfig = {
 };
 
 let transporter: nodemailer.Transporter | null = null;
-let resendClient: Resend | null = null;
 
 function normalizeProvider(value: string | undefined): EmailProvider | null {
   if (!value) return null;
   const normalized = value.trim().toLowerCase();
   if (normalized === "supabase-function") return "supabase-function";
-  if (normalized === "resend") return "resend";
+  if (normalized === "resend") return "smtp";
   if (normalized === "smtp") return "smtp";
   return null;
 }
@@ -65,11 +69,15 @@ function getEmailProvider(): EmailProvider {
     return explicit;
   }
 
+  if (hasSmtpCredentials()) {
+    return "smtp";
+  }
+
   if (process.env.SUPABASE_EMAIL_FUNCTION_URL) {
     return "supabase-function";
   }
 
-  return process.env.RESEND_API_KEY ? "resend" : "smtp";
+  return "smtp";
 }
 
 function getSupabaseFunctionAuthToken() {
@@ -85,23 +93,20 @@ function getFromEmail() {
   if (getEmailProvider() === "supabase-function") {
     return (
       process.env.SUPABASE_EMAIL_FROM ||
-      process.env.RESEND_FROM_EMAIL ||
       process.env.SMTP_FROM_EMAIL ||
+      process.env.SMTP_USER ||
       "dev@e-t.co.za"
     );
   }
 
-  if (getEmailProvider() === "resend") {
-    return process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
-  }
-
-  return process.env.SMTP_FROM_EMAIL || "dev@e-t.co.za";
+  return (
+    process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "dev@e-t.co.za"
+  );
 }
 
 function getFromName() {
   return (
     process.env.SUPABASE_EMAIL_FROM_NAME ||
-    process.env.RESEND_FROM_NAME ||
     process.env.SMTP_FROM_NAME ||
     "Enable Project Management"
   );
@@ -119,18 +124,6 @@ function buildInviteLink(inviteToken: string, invitePathOrUrl: string) {
   }
 
   return `${baseUrl}${invitePathOrUrl}${inviteToken}`;
-}
-
-function getResendClient() {
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error("Resend configuration is incomplete. Set RESEND_API_KEY.");
-  }
-
-  if (!resendClient) {
-    resendClient = new Resend(process.env.RESEND_API_KEY);
-  }
-
-  return resendClient;
 }
 
 function getTransporter() {
@@ -177,30 +170,6 @@ export async function getEmailDiagnostics(): Promise<Diagnostics> {
       hasUser: false,
       hasPassword: false,
       hasApiKey: Boolean(getSupabaseFunctionAuthToken()),
-    };
-  }
-
-  if (provider === "resend") {
-    const missing: string[] = [];
-
-    if (!process.env.RESEND_API_KEY) {
-      missing.push("RESEND_API_KEY");
-    }
-
-    return {
-      provider,
-      configured: missing.length === 0,
-      verified: missing.length === 0,
-      verifyError: null,
-      missing,
-      fromEmail,
-      fromName,
-      host: null,
-      port: null,
-      secure: null,
-      hasUser: false,
-      hasPassword: false,
-      hasApiKey: Boolean(process.env.RESEND_API_KEY),
     };
   }
 
@@ -294,40 +263,6 @@ async function sendViaSmtp({
   };
 }
 
-async function sendViaResend({
-  to,
-  subject,
-  html,
-  text,
-  fromEmail,
-  fromName,
-}: SendEmailArgs & { fromEmail: string; fromName: string }) {
-  const resend = getResendClient();
-  const result = await resend.emails.send({
-    from: `${fromName} <${fromEmail}>`,
-    to: [to],
-    subject,
-    html,
-    text,
-  });
-
-  if (result.error) {
-    throw new Error(result.error.message || "Failed to send email via Resend");
-  }
-
-  console.log("Resend email sent", {
-    emailId: result.data?.id || null,
-    recipientEmail: to,
-    subject,
-    fromEmail,
-  });
-
-  return {
-    provider: "resend" as const,
-    id: result.data?.id || null,
-  };
-}
-
 async function sendViaSupabaseFunction({
   to,
   subject,
@@ -394,17 +329,6 @@ async function sendEmail({ to, subject, html, text }: SendEmailArgs) {
 
   if (provider === "supabase-function") {
     return sendViaSupabaseFunction({
-      to,
-      subject,
-      html,
-      text,
-      fromEmail,
-      fromName,
-    });
-  }
-
-  if (provider === "resend") {
-    return sendViaResend({
       to,
       subject,
       html,

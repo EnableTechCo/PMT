@@ -3,24 +3,15 @@
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  Mail,
-  Loader2,
-  AlertCircle,
-  CheckCircle,
-  Users,
-  BarChart3,
-} from "lucide-react";
+import { Mail, Loader2, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
-  const [completingMagicLink, setCompletingMagicLink] = useState(false);
-  const { login, completePasswordlessLogin, user } = useAuth();
+  const { login, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -30,39 +21,6 @@ function LoginPageContent() {
       setEmail(emailFromInvite.trim().toLowerCase());
     }
   }, [searchParams]);
-
-  useEffect(() => {
-    const hasMagicQuery =
-      searchParams.get("magic") === "1" ||
-      Boolean(searchParams.get("code")) ||
-      Boolean(searchParams.get("token_hash"));
-
-    const hasHashToken =
-      typeof window !== "undefined" &&
-      window.location.hash.includes("access_token");
-
-    if (!hasMagicQuery && !hasHashToken) {
-      return;
-    }
-
-    setError("");
-    setNotice("");
-    setCompletingMagicLink(true);
-
-    void (async () => {
-      try {
-        await completePasswordlessLogin();
-      } catch (magicError) {
-        setError(
-          magicError instanceof Error
-            ? magicError.message
-            : "Failed to complete magic link sign-in.",
-        );
-      } finally {
-        setCompletingMagicLink(false);
-      }
-    })();
-  }, [searchParams, completePasswordlessLogin]);
 
   useEffect(() => {
     if (user) {
@@ -75,11 +33,9 @@ function LoginPageContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setNotice("");
     setLoading(true);
     try {
       await login(email);
-      setNotice("Magic link sent. Check your inbox to continue.");
     } catch (error) {
       setError(
         error instanceof Error
@@ -135,17 +91,6 @@ function LoginPageContent() {
               </motion.div>
             )}
 
-            {notice && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-3"
-              >
-                <CheckCircle className="w-5 h-5 text-emerald-500" />
-                <span className="text-emerald-700 text-sm">{notice}</span>
-              </motion.div>
-            )}
-
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label
@@ -173,21 +118,15 @@ function LoginPageContent() {
                 disabled={loading}
                 className={cn(
                   "w-full py-3 bg-[var(--color-brand-600)] text-white text-base font-semibold rounded-lg shadow-md hover:from-sky-700 hover:to-indigo-900 transition",
-                  (loading || completingMagicLink) &&
-                    "opacity-70 cursor-not-allowed",
+                  loading && "opacity-70 cursor-not-allowed",
                 )}
               >
-                {completingMagicLink ? (
+                {loading ? (
                   <span className="inline-flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Completing sign in...
-                  </span>
-                ) : loading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Sending link...
+                    <Loader2 className="w-4 h-4 animate-spin" /> Signing in...
                   </span>
                 ) : (
-                  "Send magic link"
+                  "Sign in"
                 )}
               </button>
             </form>
