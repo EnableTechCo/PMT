@@ -5,7 +5,7 @@ import {
   getUserFromRequest,
   isInternalStaffEmail,
 } from "@/lib/auth";
-import { sendAdminInviteEmail } from "@/lib/email";
+import { sendAdminInviteEmail } from "@/lib/email-service";
 import { Role } from "@/lib/db-types";
 import { randomBytes } from "node:crypto";
 import { createUser, findUserByEmail } from "@/lib/user-store";

@@ -8,7 +8,7 @@ import {
 } from "@/lib/auth";
 import { getUserWithTeamAccess, canAccessTeam } from "@/lib/access";
 import { writeAuditLog } from "@/lib/audit";
-import { sendAdminInviteEmail } from "@/lib/email";
+import { sendAdminInviteEmail } from "@/lib/email-service";
 import {
   createUser,
   findUserByEmail,
@@ -228,7 +228,7 @@ export async function POST(
       console.error("Team member invite email error:", error);
       inviteEmailSent = false;
       warning =
-        "Member added, but invitation email failed to send. Check SMTP settings and resend invite.";
+        "Member added, but invitation email failed to send. Check the email provider configuration and resend invite.";
     }
 
     invited = true;

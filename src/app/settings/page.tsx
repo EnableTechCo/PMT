@@ -117,27 +117,27 @@ function SettingsPageContent() {
     setTestEmailMessage("");
     setTestEmailError("");
 
-    console.log("[SMTP test email] starting", {
+    console.log("[Email test] starting", {
       userEmail: email,
       userName: name,
     });
 
     try {
-      console.log("[SMTP test email] sending POST /api/settings/test-email");
+      console.log("[Email test] sending POST /api/settings/test-email");
       const res = await fetch("/api/settings/test-email", {
         method: "POST",
       });
 
       const body = await res.json().catch(() => ({}));
 
-      console.log("[SMTP test email] response", {
+      console.log("[Email test] response", {
         status: res.status,
         ok: res.ok,
         body,
       });
 
       if (!res.ok) {
-        console.error("[SMTP test email] failed", body);
+        console.error("[Email test] failed", body);
         throw new Error(
           typeof body.error === "string"
             ? body.error
@@ -145,66 +145,68 @@ function SettingsPageContent() {
         );
       }
 
-      console.log("[SMTP test email] success", body);
+      console.log("[Email test] success", body);
       setTestEmailMessage(
         typeof body.message === "string"
           ? body.message
           : "Test email sent successfully.",
       );
     } catch (error) {
-      console.error("[SMTP test email] exception", error);
+      console.error("[Email test] exception", error);
       setTestEmailError(
-        error instanceof Error
-          ? error.message
-          : "Failed to send test email",
+        error instanceof Error ? error.message : "Failed to send test email",
       );
     } finally {
       setTestEmailLoading(false);
     }
   }
 
-  async function runSmtpDiagnostics() {
+  async function runEmailDiagnostics() {
     setDiagnosticLoading(true);
     setDiagnosticMessage("");
     setDiagnosticError("");
 
-    console.log("[SMTP diagnostics] starting");
+    console.log("[Email diagnostics] starting");
     try {
-      console.log("[SMTP diagnostics] sending GET /api/settings/smtp-diagnostic");
+      console.log("[Email diagnostics] sending GET /api/settings/smtp-diagnostic");
       const res = await fetch("/api/settings/smtp-diagnostic");
 
       const body = await res.json().catch(() => ({}));
 
-      console.log("[SMTP diagnostics] response", {
+      console.log("[Email diagnostics] response", {
         status: res.status,
         ok: res.ok,
         body,
       });
 
       if (!res.ok) {
-        console.error("[SMTP diagnostics] failed", body);
+        console.error("[Email diagnostics] failed", body);
         throw new Error(
           typeof body.error === "string"
             ? body.error
-            : "Failed to run SMTP diagnostics",
+            : "Failed to run email diagnostics",
         );
       }
 
       const diagnostics = body.diagnostics ?? {};
-      console.log("[SMTP diagnostics] success", diagnostics);
+      console.log("[Email diagnostics] success", diagnostics);
 
+      const provider =
+        typeof diagnostics.provider === "string"
+          ? diagnostics.provider
+          : "email";
       const configured = diagnostics.configured ? "configured" : "missing env";
       const verified = diagnostics.verified ? "verified" : "not verified";
-      const detail = diagnostics.verifyError ? ` (${diagnostics.verifyError})` : "";
-      setDiagnosticMessage(
-        `SMTP is ${configured}, ${verified}${detail}`,
-      );
+      const detail = diagnostics.verifyError
+        ? ` (${diagnostics.verifyError})`
+        : "";
+      setDiagnosticMessage(`${provider} is ${configured}, ${verified}${detail}`);
     } catch (error) {
-      console.error("[SMTP diagnostics] exception", error);
+      console.error("[Email diagnostics] exception", error);
       setDiagnosticError(
         error instanceof Error
           ? error.message
-          : "Failed to run SMTP diagnostics",
+          : "Failed to run email diagnostics",
       );
     } finally {
       setDiagnosticLoading(false);
@@ -556,11 +558,11 @@ function SettingsPageContent() {
                 <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13131a] p-4 space-y-3">
                   <div>
                     <p className="font-semibold text-slate-900 dark:text-white">
-                      SMTP test email
+                      Email delivery test
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Send a direct test message to your current account to
-                      verify server-side email delivery.
+                      Send a direct test message to your current account and
+                      inspect the active delivery provider.
                     </p>
                   </div>
 
@@ -579,12 +581,14 @@ function SettingsPageContent() {
                     <button
                       type="button"
                       onClick={() => {
-                        void runSmtpDiagnostics();
+                        void runEmailDiagnostics();
                       }}
                       disabled={diagnosticLoading}
                       className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                     >
-                      {diagnosticLoading ? "Checking..." : "Run SMTP diagnostics"}
+                      {diagnosticLoading
+                        ? "Checking..."
+                        : "Run email diagnostics"}
                     </button>
                   </div>
 

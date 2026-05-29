@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
-import { sendTestEmail } from "@/lib/email";
+import { sendTestEmail } from "@/lib/email-service";
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    console.log("Sending SMTP test email", {
+    console.log("Sending test email", {
       userId: user.id,
       email: user.email,
       name: user.name,
@@ -27,9 +27,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Failed to send test email",
+          error instanceof Error ? error.message : "Failed to send test email",
       },
       { status: 500 },
     );

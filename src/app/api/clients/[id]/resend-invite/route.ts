@@ -4,7 +4,7 @@ import { Role } from "@/lib/db-types";
 import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { findUserByEmail } from "@/lib/user-store";
-import { sendAdminInviteEmail, sendPasswordResetEmail } from "@/lib/email";
+import { sendAdminInviteEmail, sendPasswordResetEmail } from "@/lib/email-service";
 
 function isInternalStaff(role: Role) {
   return role === Role.USER || role === Role.SUPER_ADMIN;

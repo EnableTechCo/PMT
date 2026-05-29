@@ -4,7 +4,7 @@ import { Role } from "@/lib/db-types";
 import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
-import { sendAdminInviteEmail } from "@/lib/email";
+import { sendAdminInviteEmail } from "@/lib/email-service";
 import { findUserById } from "@/lib/user-store";
 
 export async function POST(
@@ -50,7 +50,9 @@ export async function POST(
 
     if (member.role === Role.CLIENT) {
       return NextResponse.json(
-        { error: "Client accounts cannot be invited as internal team members." },
+        {
+          error: "Client accounts cannot be invited as internal team members.",
+        },
         { status: 400 },
       );
     }
@@ -79,7 +81,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Failed to send invitation email. Check SMTP settings and sender domain configuration.",
+            "Failed to send invitation email. Check the email provider configuration and sender domain setup.",
         },
         { status: 502 },
       );

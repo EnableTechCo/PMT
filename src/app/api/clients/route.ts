@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Role } from "@/lib/db-types";
 import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
-import { sendAdminInviteEmail } from "@/lib/email";
+import { sendAdminInviteEmail } from "@/lib/email-service";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import crypto from "node:crypto";
 
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
           data: { isInvited: false },
         });
         warning =
-          "Client was created, but invitation email failed to send. Please check SMTP settings and use Resend Invite.";
+          "Client was created, but invitation email failed to send. Please check the email provider configuration and use Resend Invite.";
       }
     }
 
