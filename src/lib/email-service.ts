@@ -1,11 +1,12 @@
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 function parseBoolean(value: string | undefined, fallback: boolean) {
   if (value === undefined) return fallback;
   return value.toLowerCase() === "true";
 }
 
-type EmailProvider = "smtp";
+type EmailProvider = "smtp" | "resend";
 
 type Diagnostics = {
   provider: EmailProvider;
@@ -36,6 +37,10 @@ function hasSmtpCredentials() {
   );
 }
 
+function hasResendCredentials() {
+  return Boolean(process.env.RESEND_API_KEY);
+}
+
 const smtpPort = parseInt(process.env.SMTP_PORT || "465", 10);
 const smtpSecure = parseBoolean(process.env.SMTP_SECURE, smtpPort === 465);
 
@@ -54,21 +59,48 @@ const smtpConfig = {
 
 let transporter: nodemailer.Transporter | null = null;
 
+function normalizeProvider(value: string | undefined): EmailProvider | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "smtp") return "smtp";
+  if (normalized === "resend") return "resend";
+  return null;
+}
+
 function getEmailProvider(): EmailProvider {
+  const explicit = normalizeProvider(process.env.EMAIL_PROVIDER);
+  if (explicit) return explicit;
+
+  if (hasResendCredentials()) return "resend";
   return "smtp";
 }
 
 function getFromEmail() {
+  if (getEmailProvider() === "resend") {
+    return (
+      process.env.RESEND_FROM_EMAIL ||
+      process.env.SMTP_FROM_EMAIL ||
+      process.env.SMTP_USER ||
+      "dev@e-t.co.za"
+    );
+  }
+
   return (
     process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "dev@e-t.co.za"
   );
 }
 
 function getFromName() {
+  if (getEmailProvider() === "resend") {
+    return (
+      process.env.RESEND_FROM_NAME ||
+      process.env.SMTP_FROM_NAME ||
+      "Enable Project Management"
+    );
+  }
+
   return (
-    process.env.SUPABASE_EMAIL_FROM_NAME ||
-    process.env.SMTP_FROM_NAME ||
-    "Enable Project Management"
+    process.env.SMTP_FROM_NAME || "Enable Project Management"
   );
 }
 
@@ -108,6 +140,31 @@ export async function getEmailDiagnostics(): Promise<Diagnostics> {
   const provider = getEmailProvider();
   const fromEmail = getFromEmail();
   const fromName = getFromName();
+
+  if (provider === "resend") {
+    const missing: string[] = [];
+
+    if (!process.env.RESEND_API_KEY) missing.push("RESEND_API_KEY");
+    if (!process.env.RESEND_FROM_EMAIL && !process.env.SMTP_FROM_EMAIL) {
+      missing.push("RESEND_FROM_EMAIL (or SMTP_FROM_EMAIL)");
+    }
+
+    return {
+      provider,
+      configured: missing.length === 0,
+      verified: missing.length === 0,
+      verifyError: null,
+      missing,
+      fromEmail,
+      fromName,
+      host: "api.resend.com",
+      port: null,
+      secure: true,
+      hasUser: false,
+      hasPassword: false,
+      hasApiKey: Boolean(process.env.RESEND_API_KEY),
+    };
+  }
 
   const missing: string[] = [];
 
@@ -199,9 +256,78 @@ async function sendViaSmtp({
   };
 }
 
+async function sendViaResend({
+  to,
+  subject,
+  html,
+  text,
+  fromEmail,
+  fromName,
+}: SendEmailArgs & { fromEmail: string; fromName: string }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error("Resend is not configured. Set RESEND_API_KEY.");
+  }
+
+  const resend = new Resend(apiKey);
+  const from = `${fromName} <${fromEmail}>`;
+  const { data, error } = await resend.emails.send({
+    from,
+    to: [to],
+    subject,
+    html,
+    text,
+  });
+
+  if (error) {
+    throw new Error(error.message || "Resend send failed");
+  }
+
+  console.log("Resend email sent", {
+    id: data?.id ?? null,
+    recipientEmail: to,
+    subject,
+    fromEmail,
+  });
+
+  return {
+    provider: "resend" as const,
+    id: data?.id ?? null,
+  };
+}
+
 async function sendEmail({ to, subject, html, text }: SendEmailArgs) {
+  const provider = getEmailProvider();
   const fromEmail = getFromEmail();
   const fromName = getFromName();
+
+  if (provider === "resend") {
+    try {
+      return await sendViaResend({
+        to,
+        subject,
+        html,
+        text,
+        fromEmail,
+        fromName,
+      });
+    } catch (error) {
+      if (hasSmtpCredentials()) {
+        console.warn("Resend failed; falling back to SMTP", error);
+        return sendViaSmtp({
+          to,
+          subject,
+          html,
+          text,
+          fromEmail:
+            process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || fromEmail,
+          fromName: process.env.SMTP_FROM_NAME || fromName,
+        });
+      }
+
+      throw error;
+    }
+  }
 
   return sendViaSmtp({
     to,
