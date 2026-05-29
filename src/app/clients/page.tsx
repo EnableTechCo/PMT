@@ -253,8 +253,7 @@ export default function ClientsPage() {
     }
   };
 
-  const closeConfirmModal = (force = false) => {
-    if (confirmLoading && !force) return;
+  const closeConfirmModal = () => {
     setShowConfirmModal(false);
     setConfirmClient(null);
   };
@@ -275,7 +274,6 @@ export default function ClientsPage() {
 
       if (response.status === 404) {
         await fetchClients();
-        closeConfirmModal(true);
         return;
       }
 
@@ -284,8 +282,7 @@ export default function ClientsPage() {
         throw new Error(body.error || "Failed to delete client");
       }
 
-      await fetchClients();
-      closeConfirmModal(true);
+      void fetchClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete client");
     } finally {
@@ -305,8 +302,7 @@ export default function ClientsPage() {
         throw new Error(body.error || "Failed to resend invitation");
       }
 
-      await fetchClients();
-      closeConfirmModal(true);
+      void fetchClients();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to resend invitation",
@@ -327,7 +323,7 @@ export default function ClientsPage() {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || "Failed to send reset password email");
       }
-      closeConfirmModal(true);
+      void fetchClients();
     } catch (err) {
       setError(
         err instanceof Error
@@ -342,17 +338,22 @@ export default function ClientsPage() {
   const handleConfirmAction = async () => {
     if (!confirmClient) return;
 
-    if (confirmAction === "delete") {
-      await handleDeleteClient(confirmClient);
+    const client = confirmClient;
+    const action = confirmAction;
+
+    closeConfirmModal();
+
+    if (action === "delete") {
+      void handleDeleteClient(client);
       return;
     }
 
-    if (confirmAction === "resendInvite") {
-      await handleResendInvite(confirmClient);
+    if (action === "resendInvite") {
+      void handleResendInvite(client);
       return;
     }
 
-    await handleResetPassword(confirmClient);
+    void handleResetPassword(client);
   };
 
   const handleViewClientProjects = async (client: Client) => {
@@ -646,6 +647,7 @@ export default function ClientsPage() {
                         <td className="px-5 py-4 align-top">
                           <div className="flex flex-wrap items-center gap-2">
                             <button
+                              type="button"
                               onClick={() => handleViewClientProjects(client)}
                               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
                               title="View projects"
@@ -654,6 +656,7 @@ export default function ClientsPage() {
                               Projects
                             </button>
                             <button
+                              type="button"
                               onClick={() => openCreateProjectForClient(client)}
                               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
                               title="Add project"
@@ -662,6 +665,7 @@ export default function ClientsPage() {
                               Add project
                             </button>
                             <button
+                              type="button"
                               onClick={() => openEditClient(client)}
                               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-sky-400 hover:text-sky-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-sky-400 dark:hover:text-sky-300"
                               title="Edit client"
@@ -670,6 +674,7 @@ export default function ClientsPage() {
                               Edit
                             </button>
                             <button
+                              type="button"
                               onClick={() =>
                                 openConfirmModal("resendInvite", client)
                               }
@@ -680,6 +685,7 @@ export default function ClientsPage() {
                               Invite
                             </button>
                             <button
+                              type="button"
                               onClick={() =>
                                 openConfirmModal("resetPassword", client)
                               }
@@ -690,6 +696,7 @@ export default function ClientsPage() {
                               Reset
                             </button>
                             <button
+                              type="button"
                               onClick={() => openConfirmModal("delete", client)}
                               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-300 px-2.5 text-xs font-medium text-red-700 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
                               title="Delete client"
@@ -846,7 +853,6 @@ export default function ClientsPage() {
                 <button
                   type="button"
                   onClick={() => closeConfirmModal()}
-                  disabled={confirmLoading}
                   className="btn-secondary"
                 >
                   Cancel
@@ -854,13 +860,12 @@ export default function ClientsPage() {
                 <button
                   type="button"
                   onClick={handleConfirmAction}
-                  disabled={confirmLoading}
                   className={cn(
                     "inline-flex h-9 items-center rounded-md px-4 text-sm font-medium text-white transition",
                     confirmAction === "delete"
                       ? "bg-red-600 hover:bg-red-700"
                       : "bg-indigo-600 hover:bg-indigo-700",
-                    confirmLoading && "cursor-not-allowed opacity-70",
+                    confirmLoading && "cursor-wait opacity-70",
                   )}
                 >
                   {confirmLoading
