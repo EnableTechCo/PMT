@@ -353,10 +353,7 @@ export async function DELETE(
     where: { teamId, userId },
   });
   if (deleted.count === 0) {
-    return NextResponse.json(
-      { error: "Membership not found" },
-      { status: 404 },
-    );
+    return NextResponse.json({ ok: true, removed: false });
   }
 
   const remaining = await db.teamMembership.findMany({

@@ -82,9 +82,11 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Failed to send invitation email. Check the email provider configuration and sender domain setup.",
+            error instanceof Error
+              ? `Failed to send invitation email: ${error.message}`
+              : "Failed to send invitation email. Check the email provider configuration and sender domain setup.",
         },
-        { status: 502 },
+        { status: 500 },
       );
     }
 

@@ -54,6 +54,14 @@ function getEmailProvider(): EmailProvider {
   return process.env.RESEND_API_KEY ? "resend" : "smtp";
 }
 
+function hasSmtpConfig() {
+  return Boolean(
+    process.env.SMTP_HOST &&
+      process.env.SMTP_USER &&
+      process.env.SMTP_PASSWORD,
+  );
+}
+
 function getFromEmail() {
   if (getEmailProvider() === "resend") {
     return process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
@@ -209,32 +217,68 @@ async function sendEmail({ to, subject, html, text }: SendEmailArgs) {
   const fromName = getFromName();
 
   if (getEmailProvider() === "resend") {
-    const resend = getResendClient();
-    const result = await resend.emails.send({
-      from: `${fromName} <${fromEmail}>`,
-      to: [to],
-      subject,
-      html,
-      text,
-    });
+    try {
+      const resend = getResendClient();
+      const result = await resend.emails.send({
+        from: `${fromName} <${fromEmail}>`,
+        to: [to],
+        subject,
+        html,
+        text,
+      });
 
-    if (result.error) {
-      throw new Error(
-        result.error.message || "Failed to send email via Resend",
-      );
+      if (result.error) {
+        throw new Error(
+          result.error.message || "Failed to send email via Resend",
+        );
+      }
+
+      console.log("✓ Resend email sent", {
+        emailId: result.data?.id || null,
+        recipientEmail: to,
+        subject,
+        fromEmail,
+      });
+
+      return {
+        provider: "resend" as const,
+        id: result.data?.id || null,
+      };
+    } catch (resendError) {
+      if (!hasSmtpConfig()) {
+        throw resendError;
+      }
+
+      console.warn("⚠ Resend send failed, attempting SMTP fallback", {
+        resendError,
+        recipientEmail: to,
+        subject,
+      });
+
+      const smtpFromEmail = process.env.SMTP_FROM_EMAIL || "dev@e-t.co.za";
+      const smtpFromName =
+        process.env.SMTP_FROM_NAME || fromName || "Enable Project Management";
+
+      const info = await getTransporter().sendMail({
+        from: `${smtpFromName} <${smtpFromEmail}>`,
+        to,
+        subject,
+        html,
+        text,
+      });
+
+      console.log("✓ SMTP fallback email sent", {
+        messageId: info.messageId,
+        recipientEmail: to,
+        subject,
+        fromEmail: smtpFromEmail,
+      });
+
+      return {
+        provider: "smtp" as const,
+        id: info.messageId,
+      };
     }
-
-    console.log("✓ Resend email sent", {
-      emailId: result.data?.id || null,
-      recipientEmail: to,
-      subject,
-      fromEmail,
-    });
-
-    return {
-      provider: "resend" as const,
-      id: result.data?.id || null,
-    };
   }
 
   const info = await getTransporter().sendMail({
