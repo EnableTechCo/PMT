@@ -53,18 +53,24 @@ const ALLOWED_TEAM_MEMBER_ROLES = new Set<Role>([Role.USER, Role.SUPER_ADMIN]);
 async function getInvitationStatusForUser(
   userId: string,
 ): Promise<InvitationStatus> {
-  const latestInviteToken = await db.passwordReset.findFirst({
+  const inviteTokens = await db.passwordReset.findMany({
     where: { userId },
-    orderBy: { expiresAt: "desc" },
     select: {
       used: true,
       expiresAt: true,
     },
   });
 
-  if (!latestInviteToken) {
+  if (inviteTokens.length === 0) {
     return "ACTIVATED";
   }
+
+  const latestInviteToken = inviteTokens.reduce((latest, current) => {
+    if (!latest) return current;
+    return new Date(current.expiresAt) > new Date(latest.expiresAt)
+      ? current
+      : latest;
+  }, inviteTokens[0]);
 
   if (latestInviteToken.used) {
     return "ACTIVATED";
@@ -82,69 +88,85 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ teamId: string }> },
 ) {
-  const { teamId } = await context.params;
-  const sessionUser = await getUserFromRequest(request);
-  if (!sessionUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const { teamId } = await context.params;
+    const sessionUser = await getUserFromRequest(request);
+    if (!sessionUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const user = await getUserWithTeamAccess(sessionUser.id);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (user.role !== Role.SUPER_ADMIN && !canAccessTeam(user, teamId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const team = await db.team.findUnique({
+      where: { id: teamId },
+      select: { id: true },
+    });
+    if (!team) {
+      return NextResponse.json({ error: "Team not found" }, { status: 404 });
+    }
+
+    const memberships = await db.teamMembership.findMany({
+      where: { teamId },
+    });
+
+    const hydratedMembers = await Promise.all(
+      memberships.map(async (membership: { id: string; userId: string }) => {
+        const memberUser = await findUserById(membership.userId);
+        if (!memberUser) {
+          return null;
+        }
+
+        let invitationStatus: InvitationStatus = "ACTIVATED";
+        try {
+          invitationStatus = await getInvitationStatusForUser(memberUser.id);
+        } catch (statusError) {
+          console.warn("Failed to resolve team member invite status", {
+            userId: memberUser.id,
+            statusError,
+          });
+        }
+
+        return {
+          membershipId: membership.id,
+          userId: memberUser.id,
+          name: memberUser.name,
+          email: memberUser.email,
+          role: memberUser.role,
+          invitationStatus,
+        };
+      }),
+    );
+
+    const members = hydratedMembers
+      .filter(
+        (
+          member,
+        ): member is {
+          membershipId: string;
+          userId: string;
+          name: string;
+          email: string;
+          role: Role;
+          invitationStatus: InvitationStatus;
+        } => member !== null,
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    return NextResponse.json({ members });
+  } catch (error) {
+    console.error("Get team members error:", error);
+    return NextResponse.json(
+      { error: "Failed to load team members" },
+      { status: 500 },
+    );
   }
-
-  const user = await getUserWithTeamAccess(sessionUser.id);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (user.role !== Role.SUPER_ADMIN && !canAccessTeam(user, teamId)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const team = await db.team.findUnique({
-    where: { id: teamId },
-    select: { id: true },
-  });
-  if (!team) {
-    return NextResponse.json({ error: "Team not found" }, { status: 404 });
-  }
-
-  const memberships = await db.teamMembership.findMany({
-    where: { teamId },
-  });
-
-  const hydratedMembers = await Promise.all(
-    memberships.map(async (membership: { id: string; userId: string }) => {
-      const memberUser = await findUserById(membership.userId);
-      if (!memberUser) {
-        return null;
-      }
-
-      const invitationStatus = await getInvitationStatusForUser(memberUser.id);
-
-      return {
-        membershipId: membership.id,
-        userId: memberUser.id,
-        name: memberUser.name,
-        email: memberUser.email,
-        role: memberUser.role,
-        invitationStatus,
-      };
-    }),
-  );
-
-  const members = hydratedMembers
-    .filter(
-      (
-        member,
-      ): member is {
-        membershipId: string;
-        userId: string;
-        name: string;
-        email: string;
-        role: Role;
-        invitationStatus: InvitationStatus;
-      } => member !== null,
-    )
-    .sort((left, right) => left.name.localeCompare(right.name));
-
-  return NextResponse.json({ members });
 }
 
 /** POST — add member by email (super admin only; internal staff only) */
