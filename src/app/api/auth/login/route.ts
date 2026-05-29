@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserByEmail, isInternalStaffEmail } from "@/lib/auth";
 import { getUserWithTeamAccess, teamIdsForUser } from "@/lib/access";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,10 +14,75 @@ export async function POST(request: NextRequest) {
       email = rawEmail.toLowerCase().trim();
     }
 
+    if (email) {
+      const user = await getUserByEmail(email);
+
+      if (!user) {
+        return NextResponse.json(
+          {
+            error:
+              "Your account is not provisioned in this workspace yet. Ask an admin to invite you first.",
+          },
+          { status: 401 },
+        );
+      }
+
+      if (
+        (user.role === "USER" || user.role === "SUPER_ADMIN") &&
+        !isInternalStaffEmail(email)
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Internal staff sign-in requires an @e-t.co.za email address.",
+          },
+          { status: 403 },
+        );
+      }
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !supabaseAnonKey) {
+        return NextResponse.json(
+          {
+            error:
+              "Supabase auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+          },
+          { status: 500 },
+        );
+      }
+
+      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false },
+      });
+
+      const emailRedirectTo = `${request.nextUrl.origin}/auth/login?magic=1`;
+
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo,
+          shouldCreateUser: false,
+        },
+      });
+
+      if (otpError) {
+        return NextResponse.json(
+          { error: otpError.message || "Failed to send magic link" },
+          { status: 400 },
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        message: "Magic link sent. Check your email to continue.",
+      });
+    }
+
     if (!email) {
       if (!accessToken || typeof accessToken !== "string") {
         return NextResponse.json(
-          { error: "Email is required" },
+          { error: "Email or access token is required" },
           { status: 400 },
         );
       }

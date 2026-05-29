@@ -62,8 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(error.error || "Login failed");
     }
 
-    const data = await response.json();
-    setUser(data.user);
+    await response.json().catch(() => ({}));
   };
 
   const completePasswordlessLogin = async () => {
