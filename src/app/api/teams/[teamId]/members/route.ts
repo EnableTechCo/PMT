@@ -48,29 +48,36 @@ type InvitationStatus =
   | "INVITE_EXPIRED"
   | "ACTIVATED";
 
+type InviteTokenSummary = {
+  used: boolean;
+  expiresAt: string | Date;
+};
+
 const ALLOWED_TEAM_MEMBER_ROLES = new Set<Role>([Role.USER, Role.SUPER_ADMIN]);
 
 async function getInvitationStatusForUser(
   userId: string,
 ): Promise<InvitationStatus> {
-  const inviteTokens = await db.passwordReset.findMany({
+  const inviteTokens = (await db.passwordReset.findMany({
     where: { userId },
     select: {
       used: true,
       expiresAt: true,
     },
-  });
+  })) as InviteTokenSummary[];
 
   if (inviteTokens.length === 0) {
     return "ACTIVATED";
   }
 
-  const latestInviteToken = inviteTokens.reduce((latest, current) => {
-    if (!latest) return current;
+  const latestInviteToken = inviteTokens.reduce(
+    (latest: InviteTokenSummary, current: InviteTokenSummary) => {
     return new Date(current.expiresAt) > new Date(latest.expiresAt)
       ? current
       : latest;
-  }, inviteTokens[0]);
+    },
+    inviteTokens[0],
+  );
 
   if (latestInviteToken.used) {
     return "ACTIVATED";
