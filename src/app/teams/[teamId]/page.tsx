@@ -143,8 +143,8 @@ export default function TeamDetailPage() {
             {loading && !teamName ? "Team" : teamName || "Team"}
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            View members and add staff by email. The person must already have an
-            invited account.
+            View members and add staff by email. New staff will be invited
+            automatically if they do not already have an account.
           </p>
         </div>
 

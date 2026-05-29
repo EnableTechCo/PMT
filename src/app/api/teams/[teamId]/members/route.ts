@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Role } from "@/lib/db-types";
 import { db } from "@/lib/db";
-import { getUserFromRequest } from "@/lib/auth";
+import { getUserFromRequest, hashPassword, isInternalStaffEmail } from "@/lib/auth";
 import { getUserWithTeamAccess, canAccessTeam } from "@/lib/access";
 import { writeAuditLog } from "@/lib/audit";
-import { findUserByEmail, findUserById, updateUser } from "@/lib/user-store";
+import { sendAdminInviteEmail } from "@/lib/email";
+import { createUser, findUserByEmail, findUserById, updateUser } from "@/lib/user-store";
+import { randomBytes } from "node:crypto";
 
 async function requireSuperAdmin(request: NextRequest) {
   const sessionUser = await getUserFromRequest(request);
@@ -19,6 +21,17 @@ async function requireSuperAdmin(request: NextRequest) {
     };
   }
   return { sessionUser };
+}
+
+function inferNameFromEmail(email: string) {
+  const localPart = email.split("@")[0] ?? "";
+  const inferredName = localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+
+  return inferredName || localPart || "New Team Member";
 }
 
 /** GET — list members (super admin only) */
@@ -112,16 +125,54 @@ export async function POST(
     return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
 
-  const target = await findUserByEmail(rawEmail);
+  let target = await findUserByEmail(rawEmail);
+  let invited = false;
+
   if (!target) {
-    return NextResponse.json(
-      {
-        error:
-          "No user found with that email. Staff must already have an invited account.",
-      },
-      { status: 404 },
+    if (!isInternalStaffEmail(rawEmail)) {
+      return NextResponse.json(
+        {
+          error:
+            "Internal staff invites must use @e-t.co.za email addresses.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const temporaryPasswordHash = await hashPassword(
+      randomBytes(24).toString("hex"),
     );
+
+    target = await createUser({
+      email: rawEmail,
+      name: inferNameFromEmail(rawEmail),
+      password: temporaryPasswordHash,
+      role: Role.USER,
+      teamId,
+    });
+
+    const inviteToken = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await db.passwordReset.create({
+      data: {
+        token: inviteToken,
+        userId: target.id,
+        expiresAt,
+      },
+    });
+
+    await sendAdminInviteEmail(
+      rawEmail,
+      inviteToken,
+      target.name,
+      team.name,
+      "/auth/reset-password?token=",
+    );
+
+    invited = true;
   }
+
   if (target.role === Role.CLIENT) {
     return NextResponse.json(
       { error: "Client accounts cannot be added to internal teams." },
@@ -149,11 +200,17 @@ export async function POST(
     action: "TEAM_MEMBER_ADD",
     entityType: "TeamMembership",
     entityId: teamId,
-    metadata: { teamName: team.name, userId: target.id, email: target.email },
+    metadata: {
+      teamName: team.name,
+      userId: target.id,
+      email: target.email,
+      invited,
+    },
   });
 
   return NextResponse.json({
     ok: true,
+    invited,
     member: {
       userId: target.id,
       name: target.name,
