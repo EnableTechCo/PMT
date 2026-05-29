@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Role } from "@/lib/db-types";
 import { db } from "@/lib/db";
-import { getUserFromRequest, hashPassword, isInternalStaffEmail } from "@/lib/auth";
+import {
+  getUserFromRequest,
+  hashPassword,
+  isInternalStaffEmail,
+} from "@/lib/auth";
 import { getUserWithTeamAccess, canAccessTeam } from "@/lib/access";
 import { writeAuditLog } from "@/lib/audit";
 import { sendAdminInviteEmail } from "@/lib/email";
-import { createUser, findUserByEmail, findUserById, updateUser } from "@/lib/user-store";
+import {
+  createUser,
+  findUserByEmail,
+  findUserById,
+  updateUser,
+} from "@/lib/user-store";
 import { randomBytes } from "node:crypto";
 
 async function requireSuperAdmin(request: NextRequest) {
@@ -32,6 +41,38 @@ function inferNameFromEmail(email: string) {
     .join(" ");
 
   return inferredName || localPart || "New Team Member";
+}
+
+type InvitationStatus =
+  | "INVITED_NOT_CONFIRMED"
+  | "INVITE_EXPIRED"
+  | "ACTIVATED";
+
+async function getInvitationStatusForUser(
+  userId: string,
+): Promise<InvitationStatus> {
+  const latestInviteToken = await db.passwordReset.findFirst({
+    where: { userId },
+    orderBy: { expiresAt: "desc" },
+    select: {
+      used: true,
+      expiresAt: true,
+    },
+  });
+
+  if (!latestInviteToken) {
+    return "ACTIVATED";
+  }
+
+  if (latestInviteToken.used) {
+    return "ACTIVATED";
+  }
+
+  if (new Date() > new Date(latestInviteToken.expiresAt)) {
+    return "INVITE_EXPIRED";
+  }
+
+  return "INVITED_NOT_CONFIRMED";
 }
 
 /** GET — list members (super admin only) */
@@ -73,12 +114,15 @@ export async function GET(
         return null;
       }
 
+      const invitationStatus = await getInvitationStatusForUser(memberUser.id);
+
       return {
         membershipId: membership.id,
         userId: memberUser.id,
         name: memberUser.name,
         email: memberUser.email,
         role: memberUser.role,
+        invitationStatus,
       };
     }),
   );
@@ -93,6 +137,7 @@ export async function GET(
         name: string;
         email: string;
         role: Role;
+        invitationStatus: InvitationStatus;
       } => member !== null,
     )
     .sort((left, right) => left.name.localeCompare(right.name));
@@ -121,19 +166,21 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
   const rawEmail =
     typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const rawName = typeof body.name === "string" ? body.name.trim() : "";
   if (!rawEmail) {
     return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
 
   let target = await findUserByEmail(rawEmail);
   let invited = false;
+  let inviteEmailSent: boolean | null = null;
+  let warning: string | null = null;
 
   if (!target) {
     if (!isInternalStaffEmail(rawEmail)) {
       return NextResponse.json(
         {
-          error:
-            "Internal staff invites must use @e-t.co.za email addresses.",
+          error: "Internal staff invites must use @e-t.co.za email addresses.",
         },
         { status: 400 },
       );
@@ -145,7 +192,7 @@ export async function POST(
 
     target = await createUser({
       email: rawEmail,
-      name: inferNameFromEmail(rawEmail),
+      name: rawName || inferNameFromEmail(rawEmail),
       password: temporaryPasswordHash,
       role: Role.USER,
       teamId,
@@ -162,13 +209,21 @@ export async function POST(
       },
     });
 
-    await sendAdminInviteEmail(
-      rawEmail,
-      inviteToken,
-      target.name,
-      team.name,
-      "/auth/reset-password?token=",
-    );
+    try {
+      await sendAdminInviteEmail(
+        rawEmail,
+        inviteToken,
+        target.name,
+        team.name,
+        "/auth/reset-password?token=",
+      );
+      inviteEmailSent = true;
+    } catch (error) {
+      console.error("Team member invite email error:", error);
+      inviteEmailSent = false;
+      warning =
+        "Member added, but invitation email failed to send. Check SMTP settings and resend invite.";
+    }
 
     invited = true;
   }
@@ -205,17 +260,23 @@ export async function POST(
       userId: target.id,
       email: target.email,
       invited,
+      inviteEmailSent,
     },
   });
+
+  const invitationStatus = await getInvitationStatusForUser(target.id);
 
   return NextResponse.json({
     ok: true,
     invited,
+    inviteEmailSent,
+    warning,
     member: {
       userId: target.id,
       name: target.name,
       email: target.email,
       role: target.role,
+      invitationStatus,
     },
   });
 }
