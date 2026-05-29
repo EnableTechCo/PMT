@@ -6,7 +6,7 @@ function parseBoolean(value: string | undefined, fallback: boolean) {
   return value.toLowerCase() === "true";
 }
 
-type EmailProvider = "resend" | "smtp";
+type EmailProvider = "supabase-function" | "resend" | "smtp";
 
 type Diagnostics = {
   provider: EmailProvider;
@@ -51,18 +51,42 @@ let transporter: nodemailer.Transporter | null = null;
 let resendClient: Resend | null = null;
 
 function getEmailProvider(): EmailProvider {
+  if (process.env.SUPABASE_EMAIL_FUNCTION_URL) {
+    return "supabase-function";
+  }
+
   return process.env.RESEND_API_KEY ? "resend" : "smtp";
+}
+
+function hasResendConfig() {
+  return Boolean(process.env.RESEND_API_KEY);
+}
+
+function getSupabaseFunctionAuthToken() {
+  return (
+    process.env.SUPABASE_EMAIL_FUNCTION_SECRET ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    ""
+  );
 }
 
 function hasSmtpConfig() {
   return Boolean(
-    process.env.SMTP_HOST &&
-      process.env.SMTP_USER &&
-      process.env.SMTP_PASSWORD,
+    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD,
   );
 }
 
 function getFromEmail() {
+  if (getEmailProvider() === "supabase-function") {
+    return (
+      process.env.SUPABASE_EMAIL_FROM ||
+      process.env.RESEND_FROM_EMAIL ||
+      process.env.SMTP_FROM_EMAIL ||
+      "dev@e-t.co.za"
+    );
+  }
+
   if (getEmailProvider() === "resend") {
     return process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
   }
@@ -72,6 +96,7 @@ function getFromEmail() {
 
 function getFromName() {
   return (
+    process.env.SUPABASE_EMAIL_FROM_NAME ||
     process.env.RESEND_FROM_NAME ||
     process.env.SMTP_FROM_NAME ||
     "Enable Project Management"
@@ -126,6 +151,30 @@ export async function getEmailDiagnostics(): Promise<Diagnostics> {
   const provider = getEmailProvider();
   const fromEmail = getFromEmail();
   const fromName = getFromName();
+
+  if (provider === "supabase-function") {
+    const missing: string[] = [];
+
+    if (!process.env.SUPABASE_EMAIL_FUNCTION_URL) {
+      missing.push("SUPABASE_EMAIL_FUNCTION_URL");
+    }
+
+    return {
+      provider,
+      configured: missing.length === 0,
+      verified: missing.length === 0,
+      verifyError: null,
+      missing,
+      fromEmail,
+      fromName,
+      host: process.env.SUPABASE_EMAIL_FUNCTION_URL || null,
+      port: null,
+      secure: null,
+      hasUser: false,
+      hasPassword: false,
+      hasApiKey: Boolean(getSupabaseFunctionAuthToken()),
+    };
+  }
 
   if (provider === "resend") {
     const missing: string[] = [];
@@ -216,34 +265,147 @@ async function sendEmail({ to, subject, html, text }: SendEmailArgs) {
   const fromEmail = getFromEmail();
   const fromName = getFromName();
 
-  if (getEmailProvider() === "resend") {
-    try {
-      const resend = getResendClient();
-      const result = await resend.emails.send({
-        from: `${fromName} <${fromEmail}>`,
-        to: [to],
+  async function sendWithSmtp(
+    customFromEmail?: string,
+    customFromName?: string,
+  ) {
+    const info = await getTransporter().sendMail({
+      from: `${customFromName || fromName} <${customFromEmail || fromEmail}>`,
+      to,
+      subject,
+      html,
+      text,
+    });
+
+    console.log("✓ SMTP email sent", {
+      messageId: info.messageId,
+      recipientEmail: to,
+      subject,
+      fromEmail: customFromEmail || fromEmail,
+    });
+
+    return {
+      provider: "smtp" as const,
+      id: info.messageId,
+    };
+  }
+
+  async function sendWithResend() {
+    const resend = getResendClient();
+    const result = await resend.emails.send({
+      from: `${fromName} <${fromEmail}>`,
+      to: [to],
+      subject,
+      html,
+      text,
+    });
+
+    if (result.error) {
+      throw new Error(
+        result.error.message || "Failed to send email via Resend",
+      );
+    }
+
+    console.log("✓ Resend email sent", {
+      emailId: result.data?.id || null,
+      recipientEmail: to,
+      subject,
+      fromEmail,
+    });
+
+    return {
+      provider: "resend" as const,
+      id: result.data?.id || null,
+    };
+  }
+
+  async function sendWithSupabaseFunction() {
+    const functionUrl = process.env.SUPABASE_EMAIL_FUNCTION_URL;
+    if (!functionUrl) {
+      throw new Error(
+        "Supabase email function is not configured. Set SUPABASE_EMAIL_FUNCTION_URL.",
+      );
+    }
+
+    const authToken = getSupabaseFunctionAuthToken();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch(functionUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        to,
         subject,
         html,
         text,
-      });
+        fromEmail,
+        fromName,
+      }),
+    });
 
-      if (result.error) {
-        throw new Error(
-          result.error.message || "Failed to send email via Resend",
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message =
+        typeof body.error === "string"
+          ? body.error
+          : `Supabase email function failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    console.log("✓ Supabase email function sent", {
+      recipientEmail: to,
+      subject,
+      id: typeof body.id === "string" ? body.id : null,
+    });
+
+    return {
+      provider: "supabase-function" as const,
+      id: typeof body.id === "string" ? body.id : null,
+    };
+  }
+
+  if (getEmailProvider() === "supabase-function") {
+    try {
+      return await sendWithSupabaseFunction();
+    } catch (supabaseError) {
+      if (hasResendConfig()) {
+        console.warn(
+          "⚠ Supabase email function failed, attempting Resend fallback",
+          {
+            supabaseError,
+            recipientEmail: to,
+            subject,
+          },
         );
+        return sendWithResend();
       }
 
-      console.log("✓ Resend email sent", {
-        emailId: result.data?.id || null,
-        recipientEmail: to,
-        subject,
-        fromEmail,
-      });
+      if (hasSmtpConfig()) {
+        console.warn(
+          "⚠ Supabase email function failed, attempting SMTP fallback",
+          {
+            supabaseError,
+            recipientEmail: to,
+            subject,
+          },
+        );
+        return sendWithSmtp();
+      }
 
-      return {
-        provider: "resend" as const,
-        id: result.data?.id || null,
-      };
+      throw supabaseError;
+    }
+  }
+
+  if (getEmailProvider() === "resend") {
+    try {
+      return await sendWithResend();
     } catch (resendError) {
       if (!hasSmtpConfig()) {
         throw resendError;
@@ -257,49 +419,12 @@ async function sendEmail({ to, subject, html, text }: SendEmailArgs) {
 
       const smtpFromEmail = process.env.SMTP_FROM_EMAIL || "dev@e-t.co.za";
       const smtpFromName =
-        process.env.SMTP_FROM_NAME || fromName || "Enable Project Management";
-
-      const info = await getTransporter().sendMail({
-        from: `${smtpFromName} <${smtpFromEmail}>`,
-        to,
-        subject,
-        html,
-        text,
-      });
-
-      console.log("✓ SMTP fallback email sent", {
-        messageId: info.messageId,
-        recipientEmail: to,
-        subject,
-        fromEmail: smtpFromEmail,
-      });
-
-      return {
-        provider: "smtp" as const,
-        id: info.messageId,
-      };
+        process.env.SMTP_FROM_NAME || "Enable Project Management";
+      return sendWithSmtp(smtpFromEmail, smtpFromName);
     }
   }
 
-  const info = await getTransporter().sendMail({
-    from: `${fromName} <${fromEmail}>`,
-    to,
-    subject,
-    html,
-    text,
-  });
-
-  console.log("✓ SMTP email sent", {
-    messageId: info.messageId,
-    recipientEmail: to,
-    subject,
-    fromEmail,
-  });
-
-  return {
-    provider: "smtp" as const,
-    id: info.messageId,
-  };
+  return sendWithSmtp();
 }
 
 async function loadTemplate(

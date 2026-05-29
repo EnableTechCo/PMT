@@ -227,3 +227,51 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  try {
+    const session = await getUserFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const user = await getUserWithTeamAccess(session.id);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (user.role !== Role.SUPER_ADMIN) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const existing = await db.project.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    await db.project.delete({ where: { id } });
+
+    await writeAuditLog({
+      actorId: user.id,
+      action: "PROJECT_DELETE",
+      entityType: "Project",
+      entityId: id,
+      metadata: {
+        name: existing.name,
+        teamId: existing.teamId,
+      },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Project DELETE error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}

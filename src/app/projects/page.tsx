@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -22,6 +23,7 @@ type Project = {
 };
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const {
     teams,
@@ -178,10 +180,17 @@ export default function ProjectsPage() {
             )}
             <div className="grid gap-4 md:grid-cols-2">
               {projects.map((p) => (
-                <Link
+                <button
                   key={p.id}
-                  href={`/projects/${p.id}`}
-                  className="rounded-xl border border-gray-200 bg-white p-5 transition hover:border-indigo-300 dark:border-gray-700 bg-[var(--surface-elevated)] shadow-card dark:border-gray-800 dark:bg-[#1c1c24]"
+                  type="button"
+                  onClick={() => router.push(`/projects/${p.id}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      router.push(`/projects/${p.id}`);
+                    }
+                  }}
+                  className="w-full cursor-pointer rounded-xl border border-gray-200 bg-white p-5 text-left transition hover:border-indigo-300 dark:border-gray-800 dark:bg-[#1c1c24]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <h2 className="font-semibold text-gray-900 dark:text-white">
@@ -213,7 +222,7 @@ export default function ProjectsPage() {
                     {p.progress}% · {p._count.tickets} tickets ·{" "}
                     {p._count.milestones} milestones
                   </p>
-                </Link>
+                </button>
               ))}
             </div>
           </>

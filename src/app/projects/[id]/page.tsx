@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
 type Milestone = {
@@ -39,10 +40,13 @@ type ProjectDetail = {
 export default function ProjectDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (authLoading || !user || user.role === "CLIENT") return;
@@ -124,6 +128,34 @@ export default function ProjectDetailPage() {
     );
   };
 
+  const deleteProject = async () => {
+    if (!project || user?.role !== "SUPER_ADMIN" || deleting) return;
+
+    setDeleting(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to delete project.",
+        );
+      }
+
+      router.push("/projects");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to delete project.",
+      );
+    } finally {
+      setShowDeleteConfirm(false);
+      setDeleting(false);
+    }
+  };
+
   if (authLoading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -161,6 +193,16 @@ export default function ProjectDetailPage() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mt-4 mb-4">
             {project.name}
           </h1>
+          {user.role === "SUPER_ADMIN" && (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={deleting}
+              className="mb-4 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+            >
+              {deleting ? "Deleting..." : "Delete project"}
+            </button>
+          )}
         </div>
         <div className="h-3 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
           <div
@@ -312,6 +354,19 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete project"
+        message={`Delete ${project.name}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        busy={deleting}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={() => {
+          void deleteProject();
+        }}
+      />
     </DashboardLayout>
   );
 }

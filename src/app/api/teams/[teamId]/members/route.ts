@@ -72,9 +72,9 @@ async function getInvitationStatusForUser(
 
   const latestInviteToken = inviteTokens.reduce(
     (latest: InviteTokenSummary, current: InviteTokenSummary) => {
-    return new Date(current.expiresAt) > new Date(latest.expiresAt)
-      ? current
-      : latest;
+      return new Date(current.expiresAt) > new Date(latest.expiresAt)
+        ? current
+        : latest;
     },
     inviteTokens[0],
   );
