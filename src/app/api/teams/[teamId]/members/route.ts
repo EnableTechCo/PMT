@@ -279,16 +279,44 @@ export async function POST(
 
   try {
     const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(target.email)}`;
-    await sendAdminInviteEmail(
+    console.log("[Team Add] sending invite email", {
+      teamId,
+      teamName: team.name,
+      userId: target.id,
+      email: target.email,
+      invited,
+      selectedRole,
+      endpoint: "/api/teams/[teamId]/members",
+      provider: process.env.EMAIL_PROVIDER || (process.env.RESEND_API_KEY ? "resend" : "smtp"),
+      inviteToken: `${inviteToken.slice(0, 6)}...`,
+      loginLink,
+    });
+
+    const emailResult = await sendAdminInviteEmail(
       target.email,
       inviteToken,
       target.name,
       team.name,
       loginLink,
     );
+
+    console.log("[Team Add] invite email sent", {
+      teamId,
+      teamName: team.name,
+      userId: target.id,
+      email: target.email,
+      result: emailResult,
+    });
     inviteEmailSent = true;
   } catch (error) {
-    console.error("Team member invite email error:", error);
+    console.error("[Team Add] invite email failed", {
+      teamId,
+      teamName: team.name,
+      userId: target.id,
+      email: target.email,
+      error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     inviteEmailSent = false;
     warning =
       "Member added, but invitation email failed to send. Check the email provider configuration and resend invite.";
