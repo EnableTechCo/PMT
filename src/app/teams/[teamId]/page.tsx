@@ -30,7 +30,10 @@ export default function TeamDetailPage() {
   const [warning, setWarning] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"USER" | "SUPER_ADMIN">("USER");
   const [busy, setBusy] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const loadTeamMeta = useCallback(async () => {
     const res = await fetch("/api/teams");
@@ -93,6 +96,7 @@ export default function TeamDetailPage() {
         body: JSON.stringify({
           name: fullName.trim(),
           email: email.trim(),
+          role,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -112,6 +116,7 @@ export default function TeamDetailPage() {
       }
       setFullName("");
       setEmail("");
+      setRole("USER");
       await loadMembers();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -120,21 +125,25 @@ export default function TeamDetailPage() {
     }
   };
 
-  const onRemove = async (userId: string) => {
-    if (!confirm("Remove this person from the team?")) return;
+  const onRemove = async () => {
+    if (!memberToRemove) return;
     setError("");
     setNotice("");
     setWarning("");
+    setRemoving(true);
     const res = await fetch(
-      `/api/teams/${teamId}/members?userId=${encodeURIComponent(userId)}`,
+      `/api/teams/${teamId}/members?userId=${encodeURIComponent(memberToRemove.userId)}`,
       { method: "DELETE" },
     );
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       setError(typeof body.error === "string" ? body.error : "Remove failed");
+      setRemoving(false);
       return;
     }
     await loadMembers();
+    setMemberToRemove(null);
+    setRemoving(false);
   };
 
   if (authLoading || !user) {
@@ -197,7 +206,7 @@ export default function TeamDetailPage() {
           onSubmit={onAdd}
           className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900"
         >
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <div className="flex-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 Full name
@@ -212,17 +221,33 @@ export default function TeamDetailPage() {
             </div>
 
             <div className="flex-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Staff email
-            </label>
-            <input
-              type="email"
-              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="colleague@company.com"
-              required
-            />
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Staff email
+              </label>
+              <input
+                type="email"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="colleague@company.com"
+                required
+              />
+            </div>
+
+            <div className="flex-1">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Role
+              </label>
+              <select
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                value={role}
+                onChange={(e) =>
+                  setRole(e.target.value as "USER" | "SUPER_ADMIN")
+                }
+              >
+                <option value="USER">Admin</option>
+                <option value="SUPER_ADMIN">Super Admin</option>
+              </select>
             </div>
           </div>
 
@@ -290,7 +315,7 @@ export default function TeamDetailPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => onRemove(m.userId)}
+                    onClick={() => setMemberToRemove(m)}
                     className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
                   >
                     <UserMinus className="h-4 w-4" />
@@ -302,6 +327,41 @@ export default function TeamDetailPage() {
           </ul>
         )}
       </div>
+
+      {memberToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Remove team member
+            </h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              Remove {memberToRemove.name} from this team?
+            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              This only removes team membership and does not delete the user account.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMemberToRemove(null)}
+                disabled={removing}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onRemove}
+                disabled={removing}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {removing ? "Removing..." : "Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

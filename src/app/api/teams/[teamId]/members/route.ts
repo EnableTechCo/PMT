@@ -48,6 +48,8 @@ type InvitationStatus =
   | "INVITE_EXPIRED"
   | "ACTIVATED";
 
+const ALLOWED_TEAM_MEMBER_ROLES = new Set<Role>([Role.USER, Role.SUPER_ADMIN]);
+
 async function getInvitationStatusForUser(
   userId: string,
 ): Promise<InvitationStatus> {
@@ -167,6 +169,10 @@ export async function POST(
   const rawEmail =
     typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const rawName = typeof body.name === "string" ? body.name.trim() : "";
+  const rawRole = typeof body.role === "string" ? body.role : "";
+  const selectedRole: Role = ALLOWED_TEAM_MEMBER_ROLES.has(rawRole as Role)
+    ? (rawRole as Role)
+    : Role.USER;
   if (!rawEmail) {
     return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
@@ -194,7 +200,7 @@ export async function POST(
       email: rawEmail,
       name: rawName || inferNameFromEmail(rawEmail),
       password: temporaryPasswordHash,
-      role: Role.USER,
+      role: selectedRole,
       teamId,
     });
 
@@ -235,6 +241,14 @@ export async function POST(
     );
   }
 
+  if (target.role !== selectedRole) {
+    await db.user.update({
+      where: { id: target.id },
+      data: { role: selectedRole },
+    });
+    target = { ...target, role: selectedRole };
+  }
+
   try {
     await db.teamMembership.create({
       data: { userId: target.id, teamId },
@@ -261,6 +275,7 @@ export async function POST(
       email: target.email,
       invited,
       inviteEmailSent,
+      selectedRole,
     },
   });
 
