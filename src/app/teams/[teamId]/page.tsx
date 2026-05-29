@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
-import { ArrowLeft, Mail, UserMinus } from "lucide-react";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { ArrowLeft, Mail, RotateCcw, UserMinus } from "lucide-react";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
 type Member = {
@@ -32,6 +33,9 @@ export default function TeamDetailPage() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"USER" | "SUPER_ADMIN">("USER");
   const [busy, setBusy] = useState(false);
+  const [resendingForUserId, setResendingForUserId] = useState<string | null>(
+    null,
+  );
   const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
   const [removing, setRemoving] = useState(false);
 
@@ -46,8 +50,6 @@ export default function TeamDetailPage() {
   const loadMembers = useCallback(async () => {
     if (!teamId) return;
     setError("");
-    setNotice("");
-    setWarning("");
     const res = await fetch(`/api/teams/${teamId}/members`);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -126,24 +128,76 @@ export default function TeamDetailPage() {
   };
 
   const onRemove = async () => {
-    if (!memberToRemove) return;
+    const targetMember = memberToRemove;
+    if (!targetMember) return;
+
+    // Close modal immediately so errors are shown on the page, not behind an overlay.
+    setMemberToRemove(null);
     setError("");
     setNotice("");
     setWarning("");
     setRemoving(true);
-    const res = await fetch(
-      `/api/teams/${teamId}/members?userId=${encodeURIComponent(memberToRemove.userId)}`,
-      { method: "DELETE" },
-    );
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setError(typeof body.error === "string" ? body.error : "Remove failed");
+    try {
+      const res = await fetch(
+        `/api/teams/${teamId}/members?userId=${encodeURIComponent(targetMember.userId)}`,
+        { method: "DELETE" },
+      );
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setError(
+          typeof body.error === "string" ? body.error : "Remove failed",
+        );
+        return;
+      }
+
+      await loadMembers();
+      setNotice(`Removed ${targetMember.name} from this team.`);
+    } catch {
+      setError("Remove failed. Please try again.");
+    } finally {
       setRemoving(false);
-      return;
     }
-    await loadMembers();
-    setMemberToRemove(null);
-    setRemoving(false);
+  };
+
+  const onResendInvite = async (member: Member) => {
+    setError("");
+    setNotice("");
+    setWarning("");
+    setResendingForUserId(member.userId);
+
+    try {
+      const res = await fetch(
+        `/api/teams/${teamId}/members/${member.userId}/resend-invite`,
+        {
+          method: "POST",
+        },
+      );
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to send invitation email",
+        );
+      }
+
+      setNotice(
+        typeof body.message === "string"
+          ? body.message
+          : `Invitation email sent to ${member.email}`,
+      );
+      await loadMembers();
+    } catch (err) {
+      setWarning(
+        err instanceof Error
+          ? err.message
+          : "Failed to send invitation email",
+      );
+    } finally {
+      setResendingForUserId(null);
+    }
   };
 
   if (authLoading || !user) {
@@ -313,14 +367,31 @@ export default function TeamDetailPage() {
                       </span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setMemberToRemove(m)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
-                  >
-                    <UserMinus className="h-4 w-4" />
-                    Remove
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {m.invitationStatus !== "ACTIVATED" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void onResendInvite(m);
+                        }}
+                        disabled={resendingForUserId === m.userId}
+                        className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-3 py-1.5 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                        {resendingForUserId === m.userId
+                          ? "Sending..."
+                          : "Resend invite"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setMemberToRemove(m)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+                    >
+                      <UserMinus className="h-4 w-4" />
+                      Remove
+                    </button>
+                  </div>
                 </li>
               ))
             )}
@@ -328,40 +399,21 @@ export default function TeamDetailPage() {
         )}
       </div>
 
-      {memberToRemove && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Remove team member
-            </h3>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-              Remove {memberToRemove.name} from this team?
-            </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              This only removes team membership and does not delete the user account.
-            </p>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setMemberToRemove(null)}
-                disabled={removing}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={onRemove}
-                disabled={removing}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                {removing ? "Removing..." : "Remove"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        isOpen={memberToRemove !== null}
+        title="Remove team member"
+        message={
+          memberToRemove
+            ? `Remove ${memberToRemove.name} from this team? This only removes team membership and does not delete the user account.`
+            : ""
+        }
+        confirmLabel="Remove"
+        busy={removing}
+        onCancel={() => setMemberToRemove(null)}
+        onConfirm={() => {
+          void onRemove();
+        }}
+      />
     </DashboardLayout>
   );
 }
