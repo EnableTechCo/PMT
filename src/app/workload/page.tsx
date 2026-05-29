@@ -7,6 +7,7 @@ import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import CreateTicketModal from "@/components/CreateTicketModal";
 import KanbanBoard from "@/components/KanbanBoard";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { SelectMenu } from "@/components/SelectMenu";
 import {
   Plus,
@@ -128,6 +129,9 @@ export default function WorkloadPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [pendingDeleteTicketId, setPendingDeleteTicketId] = useState<
+    string | null
+  >(null);
 
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -309,10 +313,13 @@ export default function WorkloadPage() {
   };
 
   const handleDeleteTicket = (ticketId: string) => {
-    if (!confirm("Are you sure you want to delete this ticket?")) {
-      return;
-    }
-    void deleteTicketById(ticketId);
+    setPendingDeleteTicketId(ticketId);
+  };
+
+  const confirmDeleteTicket = async () => {
+    if (!pendingDeleteTicketId) return;
+    await deleteTicketById(pendingDeleteTicketId);
+    setPendingDeleteTicketId(null);
   };
 
   const goToTicket = (ticketId: string) => {
@@ -705,6 +712,16 @@ export default function WorkloadPage() {
           isOpen={showCreateModal}
           defaultTeamId={isAllTeams ? "" : activeTeamId}
           teams={teams}
+        />
+        <ConfirmDialog
+          isOpen={pendingDeleteTicketId !== null}
+          title="Delete ticket"
+          message="Are you sure you want to delete this ticket?"
+          confirmLabel="Delete"
+          onCancel={() => setPendingDeleteTicketId(null)}
+          onConfirm={() => {
+            void confirmDeleteTicket();
+          }}
         />
       </div>
     </DashboardLayout>

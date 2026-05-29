@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import {
   Github,
   Settings as SettingsIcon,
@@ -63,6 +64,7 @@ function SettingsPageContent() {
   const [statusError, setStatusError] = useState("");
   const [connectError, setConnectError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
   // User Profile display state (dummy/read-only for beauty)
   const [name, setName] = useState("");
@@ -306,7 +308,7 @@ function SettingsPageContent() {
                       </div>
                     ) : (
                       <button
-                        onClick={handleDisconnect}
+                        onClick={() => setShowDisconnectConfirm(true)}
                         disabled={connecting}
                         className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-red-200 dark:border-red-900/50 rounded-lg text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all cursor-pointer"
                       >
@@ -450,6 +452,17 @@ function SettingsPageContent() {
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={showDisconnectConfirm}
+        title="Disconnect GitHub"
+        message="Are you sure you want to disconnect GitHub? You will not be able to link branches or pull requests."
+        confirmLabel="Disconnect"
+        onCancel={() => setShowDisconnectConfirm(false)}
+        onConfirm={() => {
+          setShowDisconnectConfirm(false);
+          void handleDisconnect();
+        }}
+      />
     </DashboardLayout>
   );
 
@@ -484,12 +497,6 @@ function SettingsPageContent() {
   }
 
   async function handleDisconnect() {
-    if (
-      !confirm(
-        "Are you sure you want to disconnect GitHub? You will not be able to link branches or pull requests.",
-      )
-    )
-      return;
     setConnecting(true);
     setConnectError("");
     setSuccessMsg("");

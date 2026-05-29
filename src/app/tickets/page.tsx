@@ -7,6 +7,7 @@ import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Pagination } from "@/components/Pagination";
 import CreateTicketModal from "@/components/CreateTicketModal";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import {
   Plus,
   Filter,
@@ -126,6 +127,9 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [pendingDeleteTicketId, setPendingDeleteTicketId] = useState<
+    string | null
+  >(null);
 
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -296,10 +300,13 @@ export default function TicketsPage() {
   };
 
   const handleDeleteTicket = (ticketId: string) => {
-    if (!confirm("Are you sure you want to delete this ticket?")) {
-      return;
-    }
-    void deleteTicketById(ticketId);
+    setPendingDeleteTicketId(ticketId);
+  };
+
+  const confirmDeleteTicket = async () => {
+    if (!pendingDeleteTicketId) return;
+    await deleteTicketById(pendingDeleteTicketId);
+    setPendingDeleteTicketId(null);
   };
 
   const goToTicket = (id: string) => {
@@ -596,6 +603,16 @@ export default function TicketsPage() {
               : activeTeamId
           }
           teams={teams}
+        />
+        <ConfirmDialog
+          isOpen={pendingDeleteTicketId !== null}
+          title="Delete ticket"
+          message="Are you sure you want to delete this ticket?"
+          confirmLabel="Delete"
+          onCancel={() => setPendingDeleteTicketId(null)}
+          onConfirm={() => {
+            void confirmDeleteTicket();
+          }}
         />
       </div>
     </DashboardLayout>

@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { ArrowLeft, Save, Trash2, Clock, User } from "lucide-react";
 import TipTapEditor from "@/components/TipTapEditor";
 
@@ -28,6 +29,7 @@ export default function DocEditorPage({
   const [title, setTitle] = useState("");
   const [content, setContent] = useState<string | undefined>("");
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     fetchDoc();
@@ -68,7 +70,6 @@ export default function DocEditorPage({
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this document?")) return;
     try {
       const res = await fetch(`/api/docs/${id}`, { method: "DELETE" });
       if (res.ok) {
@@ -110,7 +111,7 @@ export default function DocEditorPage({
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <button
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"
             >
               <Trash2 className="w-5 h-5" />
@@ -152,6 +153,17 @@ export default function DocEditorPage({
             setContent={(val: string) => setContent(val)}
           />
         </div>
+        <ConfirmDialog
+          isOpen={showDeleteConfirm}
+          title="Delete document"
+          message="Are you sure you want to delete this document?"
+          confirmLabel="Delete"
+          onCancel={() => setShowDeleteConfirm(false)}
+          onConfirm={() => {
+            setShowDeleteConfirm(false);
+            void handleDelete();
+          }}
+        />
       </div>
     </DashboardLayout>
   );

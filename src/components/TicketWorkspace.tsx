@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import TipTapEditor from "@/components/TipTapEditor";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
 import {
@@ -77,6 +78,12 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [showPRModal, setShowPRModal] = useState(false);
   const [showRepoModal, setShowRepoModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    | { type: "unlinkBranch"; id: string }
+    | { type: "unlinkPr"; id: string }
+    | { type: "deleteTicket" }
+    | null
+  >(null);
 
   // Lists from APIs
   const [availableRepos, setAvailableRepos] = useState<any[]>([]);
@@ -291,7 +298,6 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   };
 
   const handleUnlinkBranch = async (id: string) => {
-    if (!confirm("Are you sure you want to unlink this branch?")) return;
     try {
       const res = await fetch(`/api/github/branches?id=${id}`, {
         method: "DELETE",
@@ -303,7 +309,6 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   };
 
   const handleUnlinkPR = async (id: string) => {
-    if (!confirm("Are you sure you want to unlink this pull request?")) return;
     try {
       const res = await fetch(`/api/github/pull-requests?id=${id}`, {
         method: "DELETE",
@@ -365,9 +370,41 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   };
 
   const deleteTicket = async () => {
-    if (!confirm("Delete this ticket permanently?")) return;
     const res = await fetch(`/api/tickets/${ticketId}`, { method: "DELETE" });
     if (res.ok) router.push("/tickets");
+  };
+
+  const confirmTitle =
+    confirmAction?.type === "unlinkBranch"
+      ? "Unlink branch"
+      : confirmAction?.type === "unlinkPr"
+        ? "Unlink pull request"
+        : "Delete ticket";
+
+  const confirmMessage =
+    confirmAction?.type === "unlinkBranch"
+      ? "Are you sure you want to unlink this branch?"
+      : confirmAction?.type === "unlinkPr"
+        ? "Are you sure you want to unlink this pull request?"
+        : "Delete this ticket permanently?";
+
+  const runConfirmAction = async () => {
+    if (!confirmAction) return;
+
+    if (confirmAction.type === "unlinkBranch") {
+      await handleUnlinkBranch(confirmAction.id);
+      setConfirmAction(null);
+      return;
+    }
+
+    if (confirmAction.type === "unlinkPr") {
+      await handleUnlinkPR(confirmAction.id);
+      setConfirmAction(null);
+      return;
+    }
+
+    await deleteTicket();
+    setConfirmAction(null);
   };
 
   useEffect(() => {
@@ -563,7 +600,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
           {(user.role === "SUPER_ADMIN" || t.creator.id === user.id) && (
             <button
               type="button"
-              onClick={deleteTicket}
+              onClick={() => setConfirmAction({ type: "deleteTicket" })}
               className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/30"
             >
               <Trash2 className="h-4 w-4" />
@@ -727,7 +764,12 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                           </div>
                           {canEdit && (
                             <button
-                              onClick={() => void handleUnlinkBranch(b.id)}
+                              onClick={() =>
+                                setConfirmAction({
+                                  type: "unlinkBranch",
+                                  id: b.id,
+                                })
+                              }
                               className="text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 px-2 py-1 rounded transition-colors cursor-pointer"
                             >
                               Unlink
@@ -789,7 +831,12 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                             </div>
                             {canEdit && (
                               <button
-                                onClick={() => void handleUnlinkPR(pr.id)}
+                                onClick={() =>
+                                  setConfirmAction({
+                                    type: "unlinkPr",
+                                    id: pr.id,
+                                  })
+                                }
                                 className="text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 px-2 py-1 rounded transition-colors cursor-pointer"
                               >
                                 Unlink
@@ -1161,6 +1208,19 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmAction !== null}
+        title={confirmTitle}
+        message={confirmMessage}
+        confirmLabel={
+          confirmAction?.type === "deleteTicket" ? "Delete" : "Unlink"
+        }
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => {
+          void runConfirmAction();
+        }}
+      />
 
       {showRepoModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
