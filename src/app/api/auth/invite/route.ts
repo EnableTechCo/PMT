@@ -121,13 +121,24 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const inviteLink =
+      role === "CLIENT"
+        ? "/auth/invite?token="
+        : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(email)}`;
+
     // Send invite email — prefer provided name, else use local-part of email
     const inviteName =
       typeof name === "string" && name.trim()
         ? name.trim()
         : email.split("@")[0];
 
-    await sendAdminInviteEmail(email, inviteToken, inviteName);
+    await sendAdminInviteEmail(
+      email,
+      inviteToken,
+      inviteName,
+      undefined,
+      inviteLink,
+    );
 
     return NextResponse.json(
       {

@@ -145,9 +145,7 @@ export default function TeamDetailPage() {
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setError(
-          typeof body.error === "string" ? body.error : "Remove failed",
-        );
+        setError(typeof body.error === "string" ? body.error : "Remove failed");
         return;
       }
 
@@ -191,9 +189,7 @@ export default function TeamDetailPage() {
       await loadMembers();
     } catch (err) {
       setWarning(
-        err instanceof Error
-          ? err.message
-          : "Failed to send invitation email",
+        err instanceof Error ? err.message : "Failed to send invitation email",
       );
     } finally {
       setResendingForUserId(null);

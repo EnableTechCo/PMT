@@ -216,12 +216,13 @@ export async function POST(
     });
 
     try {
+      const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(rawEmail)}`;
       await sendAdminInviteEmail(
         rawEmail,
         inviteToken,
         target.name,
         team.name,
-        "/auth/reset-password?token=",
+        loginLink,
       );
       inviteEmailSent = true;
     } catch (error) {

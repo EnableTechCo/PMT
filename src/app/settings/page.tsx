@@ -168,7 +168,9 @@ function SettingsPageContent() {
 
     console.log("[Email diagnostics] starting");
     try {
-      console.log("[Email diagnostics] sending GET /api/settings/smtp-diagnostic");
+      console.log(
+        "[Email diagnostics] sending GET /api/settings/smtp-diagnostic",
+      );
       const res = await fetch("/api/settings/smtp-diagnostic");
 
       const body = await res.json().catch(() => ({}));
@@ -200,7 +202,9 @@ function SettingsPageContent() {
       const detail = diagnostics.verifyError
         ? ` (${diagnostics.verifyError})`
         : "";
-      setDiagnosticMessage(`${provider} is ${configured}, ${verified}${detail}`);
+      setDiagnosticMessage(
+        `${provider} is ${configured}, ${verified}${detail}`,
+      );
     } catch (error) {
       console.error("[Email diagnostics] exception", error);
       setDiagnosticError(

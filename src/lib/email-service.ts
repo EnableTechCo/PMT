@@ -70,6 +70,20 @@ function getFromName() {
   );
 }
 
+function buildInviteLink(inviteToken: string, invitePathOrUrl: string) {
+  if (/^https?:\/\//i.test(invitePathOrUrl)) {
+    return invitePathOrUrl;
+  }
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  if (invitePathOrUrl.includes("{token}")) {
+    return `${baseUrl}${invitePathOrUrl.replace("{token}", inviteToken)}`;
+  }
+
+  return `${baseUrl}${invitePathOrUrl}${inviteToken}`;
+}
+
 function getResendClient() {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("Resend configuration is incomplete. Set RESEND_API_KEY.");
@@ -205,7 +219,9 @@ async function sendEmail({ to, subject, html, text }: SendEmailArgs) {
     });
 
     if (result.error) {
-      throw new Error(result.error.message || "Failed to send email via Resend");
+      throw new Error(
+        result.error.message || "Failed to send email via Resend",
+      );
     }
 
     console.log("✓ Resend email sent", {
@@ -266,10 +282,13 @@ async function loadTemplate(
 
     return template;
   } catch (error) {
-    console.warn("Email template load failed, falling back to inline content:", {
-      templateName,
-      error,
-    });
+    console.warn(
+      "Email template load failed, falling back to inline content:",
+      {
+        templateName,
+        error,
+      },
+    );
     return null;
   }
 }
@@ -315,9 +334,9 @@ export async function sendAdminInviteEmail(
   inviteToken: string,
   recipientName: string,
   teamName?: string,
-  invitePath: string = "/auth/invite?token=",
+  invitePathOrUrl: string = "/auth/invite?token=",
 ) {
-  const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}${invitePath}${inviteToken}`;
+  const inviteLink = buildInviteLink(inviteToken, invitePathOrUrl);
 
   let htmlContent = await loadTemplate("invite.html", {
     RECIPIENT_NAME: recipientName || "",
@@ -338,7 +357,10 @@ export async function sendAdminInviteEmail(
     });
   } catch (error) {
     if (getEmailProvider() === "smtp" && canUseDevEmailFallback(error)) {
-      console.warn("⚠ Invite email fallback enabled (development mode):", error);
+      console.warn(
+        "⚠ Invite email fallback enabled (development mode):",
+        error,
+      );
       console.log("Invite link:", inviteLink);
       return { provider: "smtp" as const, id: "dev-fallback-invite" };
     }

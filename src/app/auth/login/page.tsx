@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Mail,
@@ -20,6 +20,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { login, user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const emailFromInvite = searchParams.get("email");
+    if (emailFromInvite) {
+      setEmail(emailFromInvite.trim().toLowerCase());
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (user) {
@@ -73,6 +81,12 @@ export default function LoginPage() {
                 Enable Tech PMT
               </div>
             </div>
+            {email ? (
+              <div className="mb-4 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+                Invitation link loaded your email address. Click sign in to
+                continue.
+              </div>
+            ) : null}
             {error && (
               <motion.div
                 initial={{ opacity: 0, y: 8 }}

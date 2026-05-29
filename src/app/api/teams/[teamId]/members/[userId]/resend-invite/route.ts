@@ -69,12 +69,13 @@ export async function POST(
     });
 
     try {
+      const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(member.email)}`;
       await sendAdminInviteEmail(
         member.email,
         token,
         member.name,
         team.name,
-        "/auth/reset-password?token=",
+        loginLink,
       );
     } catch (error) {
       console.error("Team member resend invite email error:", error);

@@ -120,14 +120,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Use the invite HTML template for the admin invite and point the CTA to the reset-password route
-    await sendAdminInviteEmail(
-      email,
-      token,
-      name,
-      team?.name,
-      "/auth/reset-password?token=",
-    );
+    const inviteLink =
+      selectedRole === Role.CLIENT
+        ? "/auth/invite?token="
+        : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(email)}`;
+
+    // Use the invite HTML template for the admin invite and point the CTA to the correct entry flow
+    await sendAdminInviteEmail(email, token, name, team?.name, inviteLink);
 
     return NextResponse.json({
       message: "Invite sent successfully",
