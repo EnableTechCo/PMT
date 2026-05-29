@@ -5,7 +5,7 @@ function parseBoolean(value: string | undefined, fallback: boolean) {
   return value.toLowerCase() === "true";
 }
 
-type EmailProvider = "supabase-function" | "smtp";
+type EmailProvider = "smtp";
 
 type Diagnostics = {
   provider: EmailProvider;
@@ -54,51 +54,11 @@ const smtpConfig = {
 
 let transporter: nodemailer.Transporter | null = null;
 
-function normalizeProvider(value: string | undefined): EmailProvider | null {
-  if (!value) return null;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "supabase-function") return "supabase-function";
-  if (normalized === "resend") return "smtp";
-  if (normalized === "smtp") return "smtp";
-  return null;
-}
-
 function getEmailProvider(): EmailProvider {
-  const explicit = normalizeProvider(process.env.EMAIL_PROVIDER);
-  if (explicit) {
-    return explicit;
-  }
-
-  if (hasSmtpCredentials()) {
-    return "smtp";
-  }
-
-  if (process.env.SUPABASE_EMAIL_FUNCTION_URL) {
-    return "supabase-function";
-  }
-
   return "smtp";
 }
 
-function getSupabaseFunctionAuthToken() {
-  return (
-    process.env.SUPABASE_EMAIL_FUNCTION_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_ANON_KEY ||
-    ""
-  );
-}
-
 function getFromEmail() {
-  if (getEmailProvider() === "supabase-function") {
-    return (
-      process.env.SUPABASE_EMAIL_FROM ||
-      process.env.SMTP_FROM_EMAIL ||
-      process.env.SMTP_USER ||
-      "dev@e-t.co.za"
-    );
-  }
-
   return (
     process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "dev@e-t.co.za"
   );
@@ -148,30 +108,6 @@ export async function getEmailDiagnostics(): Promise<Diagnostics> {
   const provider = getEmailProvider();
   const fromEmail = getFromEmail();
   const fromName = getFromName();
-
-  if (provider === "supabase-function") {
-    const missing: string[] = [];
-
-    if (!process.env.SUPABASE_EMAIL_FUNCTION_URL) {
-      missing.push("SUPABASE_EMAIL_FUNCTION_URL");
-    }
-
-    return {
-      provider,
-      configured: missing.length === 0,
-      verified: missing.length === 0,
-      verifyError: null,
-      missing,
-      fromEmail,
-      fromName,
-      host: process.env.SUPABASE_EMAIL_FUNCTION_URL || null,
-      port: null,
-      secure: null,
-      hasUser: false,
-      hasPassword: false,
-      hasApiKey: Boolean(getSupabaseFunctionAuthToken()),
-    };
-  }
 
   const missing: string[] = [];
 
@@ -263,80 +199,9 @@ async function sendViaSmtp({
   };
 }
 
-async function sendViaSupabaseFunction({
-  to,
-  subject,
-  html,
-  text,
-  fromEmail,
-  fromName,
-}: SendEmailArgs & { fromEmail: string; fromName: string }) {
-  const functionUrl = process.env.SUPABASE_EMAIL_FUNCTION_URL;
-  if (!functionUrl) {
-    throw new Error(
-      "Supabase email function is not configured. Set SUPABASE_EMAIL_FUNCTION_URL.",
-    );
-  }
-
-  const authToken = getSupabaseFunctionAuthToken();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  if (authToken) {
-    headers.Authorization = `Bearer ${authToken}`;
-  }
-
-  const response = await fetch(functionUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      to,
-      subject,
-      html,
-      text,
-      fromEmail,
-      fromName,
-    }),
-  });
-
-  const body = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const message =
-      typeof body.error === "string"
-        ? body.error
-        : `Supabase email function failed with status ${response.status}`;
-    throw new Error(message);
-  }
-
-  console.log("Supabase function email sent", {
-    recipientEmail: to,
-    subject,
-    id: typeof body.id === "string" ? body.id : null,
-  });
-
-  return {
-    provider: "supabase-function" as const,
-    id: typeof body.id === "string" ? body.id : null,
-  };
-}
-
 async function sendEmail({ to, subject, html, text }: SendEmailArgs) {
-  const provider = getEmailProvider();
   const fromEmail = getFromEmail();
   const fromName = getFromName();
-
-  if (provider === "supabase-function") {
-    return sendViaSupabaseFunction({
-      to,
-      subject,
-      html,
-      text,
-      fromEmail,
-      fromName,
-    });
-  }
 
   return sendViaSmtp({
     to,
