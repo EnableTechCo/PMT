@@ -34,7 +34,9 @@ export default function ConfirmDialog({
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {title}
         </h3>
-        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{message}</p>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          {message}
+        </p>
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button

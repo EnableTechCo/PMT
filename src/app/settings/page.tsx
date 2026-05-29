@@ -114,14 +114,27 @@ function SettingsPageContent() {
     setTestEmailMessage("");
     setTestEmailError("");
 
+    console.log("[SMTP test email] starting", {
+      userEmail: email,
+      userName: name,
+    });
+
     try {
+      console.log("[SMTP test email] sending POST /api/settings/test-email");
       const res = await fetch("/api/settings/test-email", {
         method: "POST",
       });
 
       const body = await res.json().catch(() => ({}));
 
+      console.log("[SMTP test email] response", {
+        status: res.status,
+        ok: res.ok,
+        body,
+      });
+
       if (!res.ok) {
+        console.error("[SMTP test email] failed", body);
         throw new Error(
           typeof body.error === "string"
             ? body.error
@@ -129,12 +142,14 @@ function SettingsPageContent() {
         );
       }
 
+      console.log("[SMTP test email] success", body);
       setTestEmailMessage(
         typeof body.message === "string"
           ? body.message
           : "Test email sent successfully.",
       );
     } catch (error) {
+      console.error("[SMTP test email] exception", error);
       setTestEmailError(
         error instanceof Error
           ? error.message
