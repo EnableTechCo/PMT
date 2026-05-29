@@ -64,6 +64,9 @@ function SettingsPageContent() {
   const [statusError, setStatusError] = useState("");
   const [connectError, setConnectError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [testEmailLoading, setTestEmailLoading] = useState(false);
+  const [testEmailMessage, setTestEmailMessage] = useState("");
+  const [testEmailError, setTestEmailError] = useState("");
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
   // User Profile display state (dummy/read-only for beauty)
@@ -105,6 +108,42 @@ function SettingsPageContent() {
       setConnectError("GitHub OAuth state validation failed. Please retry.");
     }
   }, [searchParams]);
+
+  async function sendTestEmail() {
+    setTestEmailLoading(true);
+    setTestEmailMessage("");
+    setTestEmailError("");
+
+    try {
+      const res = await fetch("/api/settings/test-email", {
+        method: "POST",
+      });
+
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to send test email",
+        );
+      }
+
+      setTestEmailMessage(
+        typeof body.message === "string"
+          ? body.message
+          : "Test email sent successfully.",
+      );
+    } catch (error) {
+      setTestEmailError(
+        error instanceof Error
+          ? error.message
+          : "Failed to send test email",
+      );
+    } finally {
+      setTestEmailLoading(false);
+    }
+  }
 
   return (
     <DashboardLayout>
@@ -446,6 +485,41 @@ function SettingsPageContent() {
                       deactivated.
                     </p>
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13131a] p-4 space-y-3">
+                  <div>
+                    <p className="font-semibold text-slate-900 dark:text-white">
+                      SMTP test email
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Send a direct test message to your current account to
+                      verify server-side email delivery.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void sendTestEmail();
+                    }}
+                    disabled={testEmailLoading}
+                    className="inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {testEmailLoading ? "Sending..." : "Send test email"}
+                  </button>
+
+                  {testEmailMessage ? (
+                    <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                      {testEmailMessage}
+                    </p>
+                  ) : null}
+
+                  {testEmailError ? (
+                    <p className="text-sm text-red-600 dark:text-red-300">
+                      {testEmailError}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             )}

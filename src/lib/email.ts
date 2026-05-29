@@ -63,6 +63,41 @@ export async function verifyEmailService(): Promise<boolean> {
   }
 }
 
+export async function sendTestEmail(
+  recipientEmail: string,
+  recipientName: string,
+) {
+  const transporter = getTransporter();
+  const fromEmail = process.env.SMTP_FROM_EMAIL || "dev@e-t.co.za";
+  const fromName = process.env.SMTP_FROM_NAME || "Enable Project Management";
+
+  const subject = "Enable Project Management email test";
+  const text = `Hi ${recipientName}, this is a test email from Enable Project Management. If you received this, SMTP is working.`;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `${fromName} <${fromEmail}>`,
+      to: recipientEmail,
+      subject,
+      text,
+      html: `<p>Hi ${recipientName},</p><p>This is a test email from <strong>Enable Project Management</strong>.</p><p>If you received this, SMTP is working.</p>`,
+    });
+
+    console.log("✓ Test email sent:", info.messageId, {
+      recipientEmail,
+      recipientName,
+    });
+
+    return info;
+  } catch (error) {
+    console.error("✗ Failed to send test email:", error, {
+      recipientEmail,
+      recipientName,
+    });
+    throw error;
+  }
+}
+
 export async function sendAdminInviteEmail(
   recipientEmail: string,
   inviteToken: string,
