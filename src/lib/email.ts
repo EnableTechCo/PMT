@@ -39,6 +39,52 @@ function getTransporter() {
   return transporter;
 }
 
+export async function getSmtpDiagnostics() {
+  const missing: string[] = [];
+
+  if (!process.env.SMTP_HOST) missing.push("SMTP_HOST");
+  if (!process.env.SMTP_USER) missing.push("SMTP_USER");
+  if (!process.env.SMTP_PASSWORD) missing.push("SMTP_PASSWORD");
+
+  const diagnostics = {
+    host: process.env.SMTP_HOST || null,
+    port: smtpPort,
+    secure: smtpSecure,
+    hasUser: Boolean(process.env.SMTP_USER),
+    hasPassword: Boolean(process.env.SMTP_PASSWORD),
+    configured: missing.length === 0,
+    missing,
+    verified: false,
+    verifyError: null as string | null,
+  };
+
+  if (!diagnostics.configured) {
+    return diagnostics;
+  }
+
+  try {
+    await getTransporter().verify();
+    diagnostics.verified = true;
+    console.log("✓ SMTP diagnostics verified", {
+      host: diagnostics.host,
+      port: diagnostics.port,
+      secure: diagnostics.secure,
+      hasUser: diagnostics.hasUser,
+    });
+  } catch (error) {
+    diagnostics.verifyError =
+      error instanceof Error ? error.message : "SMTP verification failed";
+    console.error("✗ SMTP diagnostics verify failed:", error, {
+      host: diagnostics.host,
+      port: diagnostics.port,
+      secure: diagnostics.secure,
+      hasUser: diagnostics.hasUser,
+    });
+  }
+
+  return diagnostics;
+}
+
 function canUseDevEmailFallback(error: unknown) {
   if (process.env.NODE_ENV === "production") return false;
   if (!(error instanceof Error)) return true;

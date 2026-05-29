@@ -67,6 +67,9 @@ function SettingsPageContent() {
   const [testEmailLoading, setTestEmailLoading] = useState(false);
   const [testEmailMessage, setTestEmailMessage] = useState("");
   const [testEmailError, setTestEmailError] = useState("");
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+  const [diagnosticMessage, setDiagnosticMessage] = useState("");
+  const [diagnosticError, setDiagnosticError] = useState("");
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
   // User Profile display state (dummy/read-only for beauty)
@@ -157,6 +160,54 @@ function SettingsPageContent() {
       );
     } finally {
       setTestEmailLoading(false);
+    }
+  }
+
+  async function runSmtpDiagnostics() {
+    setDiagnosticLoading(true);
+    setDiagnosticMessage("");
+    setDiagnosticError("");
+
+    console.log("[SMTP diagnostics] starting");
+    try {
+      console.log("[SMTP diagnostics] sending GET /api/settings/smtp-diagnostic");
+      const res = await fetch("/api/settings/smtp-diagnostic");
+
+      const body = await res.json().catch(() => ({}));
+
+      console.log("[SMTP diagnostics] response", {
+        status: res.status,
+        ok: res.ok,
+        body,
+      });
+
+      if (!res.ok) {
+        console.error("[SMTP diagnostics] failed", body);
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to run SMTP diagnostics",
+        );
+      }
+
+      const diagnostics = body.diagnostics ?? {};
+      console.log("[SMTP diagnostics] success", diagnostics);
+
+      const configured = diagnostics.configured ? "configured" : "missing env";
+      const verified = diagnostics.verified ? "verified" : "not verified";
+      const detail = diagnostics.verifyError ? ` (${diagnostics.verifyError})` : "";
+      setDiagnosticMessage(
+        `SMTP is ${configured}, ${verified}${detail}`,
+      );
+    } catch (error) {
+      console.error("[SMTP diagnostics] exception", error);
+      setDiagnosticError(
+        error instanceof Error
+          ? error.message
+          : "Failed to run SMTP diagnostics",
+      );
+    } finally {
+      setDiagnosticLoading(false);
     }
   }
 
@@ -513,16 +564,29 @@ function SettingsPageContent() {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void sendTestEmail();
-                    }}
-                    disabled={testEmailLoading}
-                    className="inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {testEmailLoading ? "Sending..." : "Send test email"}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void sendTestEmail();
+                      }}
+                      disabled={testEmailLoading}
+                      className="inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {testEmailLoading ? "Sending..." : "Send test email"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void runSmtpDiagnostics();
+                      }}
+                      disabled={diagnosticLoading}
+                      className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      {diagnosticLoading ? "Checking..." : "Run SMTP diagnostics"}
+                    </button>
+                  </div>
 
                   {testEmailMessage ? (
                     <p className="text-sm text-emerald-700 dark:text-emerald-300">
@@ -533,6 +597,18 @@ function SettingsPageContent() {
                   {testEmailError ? (
                     <p className="text-sm text-red-600 dark:text-red-300">
                       {testEmailError}
+                    </p>
+                  ) : null}
+
+                  {diagnosticMessage ? (
+                    <p className="text-sm text-slate-700 dark:text-slate-300">
+                      {diagnosticMessage}
+                    </p>
+                  ) : null}
+
+                  {diagnosticError ? (
+                    <p className="text-sm text-red-600 dark:text-red-300">
+                      {diagnosticError}
                     </p>
                   ) : null}
                 </div>
