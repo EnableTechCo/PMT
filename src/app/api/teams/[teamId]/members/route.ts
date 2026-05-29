@@ -51,21 +51,38 @@ export async function GET(
 
   const memberships = await db.teamMembership.findMany({
     where: { teamId },
-    include: {
-      user: {
-        select: { id: true, name: true, email: true, role: true },
-      },
-    },
-    orderBy: { user: { name: "asc" } },
   });
 
-  const members = memberships.map((m: any) => ({
-    membershipId: m.id,
-    userId: m.user.id,
-    name: m.user.name,
-    email: m.user.email,
-    role: m.user.role,
-  }));
+  const hydratedMembers = await Promise.all(
+    memberships.map(async (membership: { id: string; userId: string }) => {
+      const memberUser = await findUserById(membership.userId);
+      if (!memberUser) {
+        return null;
+      }
+
+      return {
+        membershipId: membership.id,
+        userId: memberUser.id,
+        name: memberUser.name,
+        email: memberUser.email,
+        role: memberUser.role,
+      };
+    }),
+  );
+
+  const members = hydratedMembers
+    .filter(
+      (
+        member,
+      ): member is {
+        membershipId: string;
+        userId: string;
+        name: string;
+        email: string;
+        role: Role;
+      } => member !== null,
+    )
+    .sort((left, right) => left.name.localeCompare(right.name));
 
   return NextResponse.json({ members });
 }
