@@ -233,34 +233,6 @@ export async function POST(
       teamId,
     });
 
-    const inviteToken = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    await db.passwordReset.create({
-      data: {
-        token: inviteToken,
-        userId: target.id,
-        expiresAt,
-      },
-    });
-
-    try {
-      const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(rawEmail)}`;
-      await sendAdminInviteEmail(
-        rawEmail,
-        inviteToken,
-        target.name,
-        team.name,
-        loginLink,
-      );
-      inviteEmailSent = true;
-    } catch (error) {
-      console.error("Team member invite email error:", error);
-      inviteEmailSent = false;
-      warning =
-        "Member added, but invitation email failed to send. Check the email provider configuration and resend invite.";
-    }
-
     invited = true;
   }
 
@@ -292,6 +264,34 @@ export async function POST(
 
   if (target.teamId === null) {
     await updateUser(target.id, { teamId });
+  }
+
+  const inviteToken = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  await db.passwordReset.create({
+    data: {
+      token: inviteToken,
+      userId: target.id,
+      expiresAt,
+    },
+  });
+
+  try {
+    const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(target.email)}`;
+    await sendAdminInviteEmail(
+      target.email,
+      inviteToken,
+      target.name,
+      team.name,
+      loginLink,
+    );
+    inviteEmailSent = true;
+  } catch (error) {
+    console.error("Team member invite email error:", error);
+    inviteEmailSent = false;
+    warning =
+      "Member added, but invitation email failed to send. Check the email provider configuration and resend invite.";
   }
 
   await writeAuditLog({

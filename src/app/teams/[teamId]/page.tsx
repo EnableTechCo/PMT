@@ -91,17 +91,26 @@ export default function TeamDetailPage() {
     setNotice("");
     setWarning("");
     setBusy(true);
+    const endpoint = `/api/teams/${teamId}/members`;
+    const payload = {
+      name: fullName.trim(),
+      email: email.trim(),
+      role,
+    };
+
+    console.groupCollapsed("[Team Add] Add to team request");
+    console.log("endpoint:", endpoint);
+    console.log("payload:", payload);
     try {
-      const res = await fetch(`/api/teams/${teamId}/members`, {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: fullName.trim(),
-          email: email.trim(),
-          role,
-        }),
+        body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => ({}));
+      console.log("response status:", res.status);
+      console.log("response ok:", res.ok);
+      console.log("response body:", body);
       if (!res.ok) throw new Error(body.error || "Failed to add member");
       if (body.invited) {
         if (body.inviteEmailSent === false) {
@@ -121,8 +130,10 @@ export default function TeamDetailPage() {
       setRole("USER");
       await loadMembers();
     } catch (err) {
+      console.error("[Team Add] request failed:", err);
       setError(err instanceof Error ? err.message : "Error");
     } finally {
+      console.groupEnd();
       setBusy(false);
     }
   };
