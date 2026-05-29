@@ -10,7 +10,6 @@
     "lint:fix": "next lint --fix",
     "type-check": "tsc --noEmit",
     "seed": "tsx src/scripts/seedTickets.ts",
-    "email:test:ignatius": "tsx scripts/send-test-email.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
