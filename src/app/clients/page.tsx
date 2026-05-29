@@ -825,7 +825,7 @@ export default function ClientsPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
               className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-              onClick={closeConfirmModal}
+              onClick={() => closeConfirmModal()}
             />
             <div className="relative w-full max-w-md rounded-2xl border border-gray-200/80 bg-white/95 p-6 shadow-2xl backdrop-blur-xl dark:border-gray-800/50 dark:bg-gray-900/95">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -845,7 +845,7 @@ export default function ClientsPage() {
               <div className="mt-6 flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={closeConfirmModal}
+                  onClick={() => closeConfirmModal()}
                   disabled={confirmLoading}
                   className="btn-secondary"
                 >

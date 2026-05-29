@@ -312,8 +312,8 @@ export async function POST(request: NextRequest) {
       typeof body.clientId === "string" ? body.clientId : undefined;
     const githubRepoUrlRaw =
       typeof body.githubRepoUrl === "string" ? body.githubRepoUrl.trim() : "";
-    const githubReposInput = Array.isArray(body.githubRepos)
-      ? body.githubRepos
+    const githubReposInput: unknown[] = Array.isArray(body.githubRepos)
+      ? (body.githubRepos as unknown[])
       : [];
 
     let parsedGithubRepo: {
