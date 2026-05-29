@@ -32,6 +32,10 @@ function toDate(value: string | Date): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 function mapUser(row: UserRow): User {
   return {
     ...row,
@@ -92,10 +96,11 @@ export async function findUserById(userId: string): Promise<User | null> {
 
 export async function findUserByEmail(email: string): Promise<User | null> {
   const supabase = createSupabaseAdminClient();
+  const normalizedEmail = normalizeEmail(email);
   const { data, error } = await supabase
     .from("User")
     .select("*")
-    .eq("email", email)
+    .ilike("email", normalizedEmail)
     .maybeSingle<UserRow>();
 
   if (error) throw normalizeSupabaseError(error);
@@ -118,10 +123,11 @@ export async function findUserTeamMemberships(
 
 export async function findClientByEmail(email: string): Promise<Client | null> {
   const supabase = createSupabaseAdminClient();
+  const normalizedEmail = normalizeEmail(email);
   const { data, error } = await supabase
     .from("Client")
     .select("*")
-    .eq("email", email)
+    .ilike("email", normalizedEmail)
     .maybeSingle<ClientRow>();
 
   if (error) throw normalizeSupabaseError(error);
@@ -158,7 +164,7 @@ export async function updateUser(userId: string, updates: UpdateUserInput) {
 export async function createUser(input: CreateUserInput): Promise<User> {
   const supabase = createSupabaseAdminClient();
   const payload = {
-    email: input.email,
+    email: normalizeEmail(input.email),
     password: input.password,
     name: input.name,
     role: input.role,
