@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
     const inviteLink =
       selectedRole === Role.CLIENT
         ? "/auth/invite?token="
-        : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(email)}`;
+        : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(email)}&inviteToken=${encodeURIComponent(token)}`;
 
     // Use the invite HTML template for the admin invite and point the CTA to the correct entry flow
     await sendAdminInviteEmail(email, token, name, team?.name, inviteLink);

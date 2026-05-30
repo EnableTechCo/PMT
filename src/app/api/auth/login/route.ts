@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserByEmail, isInternalStaffEmail } from "@/lib/auth";
 import { getUserWithTeamAccess, teamIdsForUser } from "@/lib/access";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import { db } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,6 +62,21 @@ export async function POST(request: NextRequest) {
 
     const full = await getUserWithTeamAccess(user.id);
     const teamIds = full ? teamIdsForUser(full) : null;
+
+    // Once invited users successfully sign in, mark outstanding invite/reset
+    // tokens as used so admin-facing invitation status reflects activation.
+    await db.passwordReset.updateMany({
+      where: {
+        userId: user.id,
+        used: false,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+      data: {
+        used: true,
+      },
+    });
 
     const response = NextResponse.json({
       user: {

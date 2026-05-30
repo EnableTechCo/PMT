@@ -278,7 +278,7 @@ export async function POST(
   });
 
   try {
-    const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(target.email)}`;
+    const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(target.email)}&inviteToken=${encodeURIComponent(inviteToken)}`;
     console.log("[Team Add] sending invite email", {
       teamId,
       teamName: team.name,

@@ -69,7 +69,7 @@ export async function POST(
     });
 
     try {
-      const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(member.email)}`;
+      const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(member.email)}&inviteToken=${encodeURIComponent(token)}`;
       await sendAdminInviteEmail(
         member.email,
         token,

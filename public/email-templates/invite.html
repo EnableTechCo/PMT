@@ -26,11 +26,6 @@
             overflow: hidden;
         }
 
-        .header {
-            padding: 28px;
-            background: linear-gradient(90deg, #0ea5e9 0%, #7c3aed 100%);
-        }
-
         .header h1 {
             margin: 0;
             font-weight: 300;
@@ -39,7 +34,7 @@
 
         .body {
             padding: 28px;
-            background: #071026;
+
         }
 
         .body p {
@@ -75,37 +70,20 @@
             align-items: center;
             gap: 12px;
         }
-
-        .brand .logo {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            background: linear-gradient(90deg, #0ea5e9, #7c3aed);
-        }
-
-        .brand .name {
-            font-size: 18px;
-            font-weight: 300;
-        }
     </style>
 </head>
 
 <body>
     <div class="wrapper">
         <div class="card">
-            <div class="header">
-                <div class="brand">
-                    <div class="logo" aria-hidden="true"></div>
-                    <div class="name">Enable</div>
-                </div>
-            </div>
             <div class="body">
                 <p>Hello <strong><!-- RECIPIENT_NAME --></strong>,</p>
-                <p>You have been invited to join <strong>Enable</strong> as an administrator.</p>
+                <p>You have been invited to join <strong>Enable Project Management Tool</strong> as an administrator.
+                </p>
                 <p><strong>Assigned team:</strong> <!-- TEAM_NAME --></p>
                 <p>Click the button below to accept the invitation and complete your account setup.</p>
                 <p style="margin-top:18px">
-                    <a class="cta" href="<!-- INVITE_LINK -->">Accept invitation</a>
+                    <a class="cta" href="<!-- INVITE_LINK -->">Accept &amp; Login</a>
                 </p>
                 <p class="muted" style="margin-top:18px">This link expires in 24 hours. If you didn't expect this,
                     ignore this message.</p>

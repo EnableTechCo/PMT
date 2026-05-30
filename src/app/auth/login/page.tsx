@@ -11,6 +11,7 @@ function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [inviteActivated, setInviteActivated] = useState(false);
   const { login, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -21,6 +22,30 @@ function LoginPageContent() {
       setEmail(emailFromInvite.trim().toLowerCase());
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const inviteToken = searchParams.get("inviteToken");
+
+    if (!inviteToken || inviteActivated) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        await fetch("/api/auth/invite/activate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: inviteToken }),
+        });
+      } catch (activationError) {
+        console.warn("Invite activation ping failed", activationError);
+      } finally {
+        setInviteActivated(true);
+      }
+    })();
+  }, [searchParams, inviteActivated]);
 
   useEffect(() => {
     if (user) {

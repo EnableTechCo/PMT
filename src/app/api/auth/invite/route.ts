@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
     const inviteLink =
       role === "CLIENT"
         ? "/auth/invite?token="
-        : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(email)}`;
+        : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(email)}&inviteToken=${encodeURIComponent(inviteToken)}`;
 
     // Send invite email — prefer provided name, else use local-part of email
     const inviteName =
