@@ -287,7 +287,9 @@ export async function POST(
       invited,
       selectedRole,
       endpoint: "/api/teams/[teamId]/members",
-      provider: process.env.EMAIL_PROVIDER || (process.env.RESEND_API_KEY ? "resend" : "smtp"),
+      provider:
+        process.env.EMAIL_PROVIDER ||
+        (process.env.RESEND_API_KEY ? "resend" : "smtp"),
       inviteToken: `${inviteToken.slice(0, 6)}...`,
       loginLink,
     });

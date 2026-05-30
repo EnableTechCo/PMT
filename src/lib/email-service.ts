@@ -31,12 +31,6 @@ type SendEmailArgs = {
   text: string;
 };
 
-function hasSmtpCredentials() {
-  return Boolean(
-    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD,
-  );
-}
-
 function hasResendCredentials() {
   return Boolean(process.env.RESEND_API_KEY);
 }
@@ -99,9 +93,7 @@ function getFromName() {
     );
   }
 
-  return (
-    process.env.SMTP_FROM_NAME || "Enable Project Management"
-  );
+  return process.env.SMTP_FROM_NAME || "Enable Project Management";
 }
 
 function buildInviteLink(inviteToken: string, invitePathOrUrl: string) {
@@ -302,31 +294,14 @@ async function sendEmail({ to, subject, html, text }: SendEmailArgs) {
   const fromName = getFromName();
 
   if (provider === "resend") {
-    try {
-      return await sendViaResend({
-        to,
-        subject,
-        html,
-        text,
-        fromEmail,
-        fromName,
-      });
-    } catch (error) {
-      if (hasSmtpCredentials()) {
-        console.warn("Resend failed; falling back to SMTP", error);
-        return sendViaSmtp({
-          to,
-          subject,
-          html,
-          text,
-          fromEmail:
-            process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || fromEmail,
-          fromName: process.env.SMTP_FROM_NAME || fromName,
-        });
-      }
-
-      throw error;
-    }
+    return sendViaResend({
+      to,
+      subject,
+      html,
+      text,
+      fromEmail,
+      fromName,
+    });
   }
 
   return sendViaSmtp({

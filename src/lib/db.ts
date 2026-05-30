@@ -635,6 +635,7 @@ const db = new Proxy(
             .from(table)
             .delete()
             .match(where || {})
+            .select("id")
             .single()) as QueryResponse;
           const { data, error } = response;
           if (error) {
@@ -679,7 +680,8 @@ const db = new Proxy(
           const response = (await supabase
             .from(table)
             .delete()
-            .match(where || {})) as QueryResponse;
+            .match(where || {})
+            .select("id")) as QueryResponse;
           const { data, error } = response;
           if (error) {
             throw error;
