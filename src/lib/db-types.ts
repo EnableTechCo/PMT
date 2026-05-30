@@ -52,6 +52,7 @@ export interface User {
   email: string;
   password: string;
   name: string;
+  phone: string | null;
   role: Role;
   teamId: string | null;
   githubToken: string | null;

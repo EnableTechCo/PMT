@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
-import { FileText, Plus, Search, Clock, User } from "lucide-react";
+import { FileText, Plus, Search, Clock, User, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
@@ -26,6 +26,10 @@ export default function DocsPage() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newDocTitle, setNewDocTitle] = useState("");
+  const [createDocError, setCreateDocError] = useState("");
+  const [creatingDoc, setCreatingDoc] = useState(false);
 
   useEffect(() => {
     fetchDocs();
@@ -59,16 +63,23 @@ export default function DocsPage() {
   };
 
   const createDoc = async () => {
-    const title = prompt("Enter document title:");
-    if (!title) return;
+    const title = newDocTitle.trim();
+    if (!title) {
+      setCreateDocError("Document title is required.");
+      return;
+    }
 
-    let teamId = activeTeamId;
+    const teamId = activeTeamId;
     if (isAllTeams || !teamId) {
-      alert("Please select a specific team first to create a document.");
+      setCreateDocError(
+        "Please select a specific team first to create a document.",
+      );
       return;
     }
 
     try {
+      setCreatingDoc(true);
+      setCreateDocError("");
       const res = await fetch("/api/docs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,10 +87,23 @@ export default function DocsPage() {
       });
       if (res.ok) {
         const newDoc = await res.json();
+        setShowCreateModal(false);
+        setNewDocTitle("");
         router.push(`/docs/${newDoc.id}`);
+        return;
       }
+
+      const body = await res.json().catch(() => ({}));
+      setCreateDocError(
+        typeof body.error === "string"
+          ? body.error
+          : "Failed to create document.",
+      );
     } catch (e) {
       console.error(e);
+      setCreateDocError("Failed to create document.");
+    } finally {
+      setCreatingDoc(false);
     }
   };
 
@@ -101,7 +125,10 @@ export default function DocsPage() {
           </div>
 
           <button
-            onClick={createDoc}
+            onClick={() => {
+              setCreateDocError("");
+              setShowCreateModal(true);
+            }}
             className="btn-primary shrink-0 self-start sm:self-auto"
           >
             <Plus className="w-6 h-6" />
@@ -177,6 +204,79 @@ export default function DocsPage() {
           </div>
         )}
       </div>
+
+      {showCreateModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => {
+              if (creatingDoc) return;
+              setShowCreateModal(false);
+            }}
+          />
+
+          <div className="relative w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-[#1c1c24]">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                New Document
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  if (creatingDoc) return;
+                  setShowCreateModal(false);
+                }}
+                className="rounded-md p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={newDocTitle}
+                  onChange={(e) => setNewDocTitle(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-brand-500 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                  placeholder="Enter document title"
+                  autoFocus
+                />
+              </div>
+
+              {createDocError ? (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+                  {createDocError}
+                </p>
+              ) : null}
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-white/5"
+                  disabled={creatingDoc}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void createDoc();
+                  }}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                  disabled={creatingDoc}
+                >
+                  {creatingDoc ? "Creating..." : "Create"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </DashboardLayout>
   );
 }

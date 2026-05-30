@@ -6,7 +6,14 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { ArrowLeft, Mail, RotateCcw, UserMinus } from "lucide-react";
+import {
+  ArrowLeft,
+  Mail,
+  Pencil,
+  RotateCcw,
+  Save,
+  UserMinus,
+} from "lucide-react";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
 type Member = {
@@ -14,6 +21,7 @@ type Member = {
   userId: string;
   name: string;
   email: string;
+  phone: string | null;
   role: string;
   invitationStatus: "INVITED_NOT_CONFIRMED" | "INVITE_EXPIRED" | "ACTIVATED";
 };
@@ -38,6 +46,13 @@ export default function TeamDetailPage() {
   );
   const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [savingMember, setSavingMember] = useState(false);
+  const [editMember, setEditMember] = useState({
+    name: "",
+    role: "USER" as "USER" | "SUPER_ADMIN",
+    phone: "",
+  });
 
   const loadTeamMeta = useCallback(async () => {
     const res = await fetch("/api/teams");
@@ -213,6 +228,64 @@ export default function TeamDetailPage() {
     }
   };
 
+  const beginEditMember = (member: Member) => {
+    setError("");
+    setNotice("");
+    setWarning("");
+    setEditingMemberId(member.userId);
+    setEditMember({
+      name: member.name,
+      role: member.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : "USER",
+      phone: member.phone ?? "",
+    });
+  };
+
+  const cancelEditMember = () => {
+    setEditingMemberId(null);
+    setEditMember({
+      name: "",
+      role: "USER",
+      phone: "",
+    });
+  };
+
+  const saveMemberProfile = async (member: Member) => {
+    setError("");
+    setNotice("");
+    setWarning("");
+    setSavingMember(true);
+    try {
+      const res = await fetch(`/api/teams/${teamId}/members/${member.userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editMember.name,
+          role: editMember.role,
+          phone: editMember.phone,
+        }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to update team member",
+        );
+      }
+
+      await loadMembers();
+      setNotice(
+        `Updated profile for ${editMember.name.trim() || member.name}.`,
+      );
+      cancelEditMember();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update member");
+    } finally {
+      setSavingMember(false);
+    }
+  };
+
   if (authLoading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -224,7 +297,7 @@ export default function TeamDetailPage() {
   const statusLabel = (status: Member["invitationStatus"]) => {
     if (status === "ACTIVATED") return "Activated";
     if (status === "INVITE_EXPIRED") return "Invite expired";
-    return "Invited - not activated";
+    return "Invited - Pending";
   };
 
   const statusClasses = (status: Member["invitationStatus"]) => {
@@ -251,7 +324,7 @@ export default function TeamDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-3xl space-y-8">
+      <div className="w-full space-y-8">
         <div>
           <Link
             href="/teams"
@@ -370,6 +443,11 @@ export default function TeamDetailPage() {
                       <p className="text-sm text-gray-600 dark:text-gray-400">
                         {m.email}
                       </p>
+                      {m.phone ? (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Phone: {m.phone}
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         {m.role.replace("_", " ")}
                       </p>
@@ -398,6 +476,14 @@ export default function TeamDetailPage() {
                     )}
                     <button
                       type="button"
+                      onClick={() => beginEditMember(m)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setMemberToRemove(m)}
                       className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
                     >
@@ -405,6 +491,69 @@ export default function TeamDetailPage() {
                       Remove
                     </button>
                   </div>
+                  {editingMemberId === m.userId ? (
+                    <div className="mt-3 w-full rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/40 sm:max-w-xl">
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <input
+                          type="text"
+                          value={editMember.name}
+                          onChange={(e) =>
+                            setEditMember((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                          placeholder="Full name"
+                          className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                        />
+                        <select
+                          value={editMember.role}
+                          onChange={(e) =>
+                            setEditMember((prev) => ({
+                              ...prev,
+                              role: e.target.value as "USER" | "SUPER_ADMIN",
+                            }))
+                          }
+                          className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                        >
+                          <option value="USER">Admin</option>
+                          <option value="SUPER_ADMIN">Super Admin</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={editMember.phone}
+                          onChange={(e) =>
+                            setEditMember((prev) => ({
+                              ...prev,
+                              phone: e.target.value,
+                            }))
+                          }
+                          placeholder="Phone (optional)"
+                          className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void saveMemberProfile(m);
+                          }}
+                          disabled={savingMember || !editMember.name.trim()}
+                          className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                        >
+                          <Save className="h-4 w-4" />
+                          {savingMember ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditMember}
+                          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </li>
               ))
             )}

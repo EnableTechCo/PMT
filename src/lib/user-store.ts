@@ -21,11 +21,12 @@ type CreateUserInput = {
   name: string;
   role: Role;
   teamId?: string | null;
+  phone?: string | null;
   githubToken?: string | null;
 };
 
 type UpdateUserInput = Partial<
-  Pick<User, "password" | "teamId" | "githubToken">
+  Pick<User, "password" | "name" | "role" | "teamId" | "phone" | "githubToken">
 >;
 
 function toDate(value: string | Date): Date {
@@ -169,6 +170,7 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     name: input.name,
     role: input.role,
     teamId: input.teamId ?? null,
+    phone: input.phone ?? null,
     githubToken: input.githubToken ?? null,
   };
 

@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
         id: user.id,
         name: user.name,
         email: user.email,
+        phone: user.phone,
         role: user.role,
         teamId: user.teamId,
         teamIds,

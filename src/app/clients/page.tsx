@@ -125,6 +125,11 @@ export default function ClientsPage() {
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (user?.role !== "SUPER_ADMIN") {
+      setError("Only super admins can add clients.");
+      return;
+    }
+
     try {
       const response = await fetch("/api/clients", {
         method: "POST",
@@ -228,6 +233,11 @@ export default function ClientsPage() {
   const handleUpdateClient = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (user?.role !== "SUPER_ADMIN") {
+      setError("Only super admins can update clients.");
+      return;
+    }
+
     try {
       const response = await fetch(`/api/clients/${editClient.id}`, {
         method: "PATCH",
@@ -265,6 +275,11 @@ export default function ClientsPage() {
   };
 
   const handleDeleteClient = async (client: Client) => {
+    if (user?.role !== "SUPER_ADMIN") {
+      setError("Only super admins can delete clients.");
+      return;
+    }
+
     setConfirmLoading(true);
 
     try {
@@ -291,6 +306,11 @@ export default function ClientsPage() {
   };
 
   const handleResendInvite = async (client: Client) => {
+    if (user?.role !== "SUPER_ADMIN") {
+      setError("Only super admins can resend client invitations.");
+      return;
+    }
+
     setConfirmLoading(true);
     try {
       const response = await fetch(`/api/clients/${client.id}/resend-invite`, {
@@ -313,6 +333,11 @@ export default function ClientsPage() {
   };
 
   const handleResetPassword = async (client: Client) => {
+    if (user?.role !== "SUPER_ADMIN") {
+      setError("Only super admins can trigger client password resets.");
+      return;
+    }
+
     setConfirmLoading(true);
     try {
       const response = await fetch(`/api/clients/${client.id}/reset-password`, {
@@ -443,8 +468,8 @@ export default function ClientsPage() {
     }
   };
 
-  const canManageClients =
-    user?.role === "USER" || user?.role === "SUPER_ADMIN";
+  const canManageClients = user?.role === "SUPER_ADMIN";
+  const canViewClients = user?.role === "USER" || user?.role === "SUPER_ADMIN";
   const invitedCount = clients.filter((client) => client.isInvited).length;
   const activatedCount = clients.filter(
     (client) => client.invitationStatus === "ACTIVATED",
@@ -454,7 +479,7 @@ export default function ClientsPage() {
     0,
   );
 
-  if (!user || !canManageClients) {
+  if (!user || !canViewClients) {
     return (
       <DashboardLayout>
         <div className="text-center py-12">
@@ -484,6 +509,7 @@ export default function ClientsPage() {
 
           <button
             onClick={() => setShowCreateModal(true)}
+            disabled={!canManageClients}
             className="btn-primary flex items-center space-x-2"
           >
             <Plus className="w-5 h-5" />
@@ -514,7 +540,8 @@ export default function ClientsPage() {
             </p>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="btn-primary"
+              disabled={!canManageClients}
+              className="btn-primary disabled:opacity-50"
             >
               Add your first client
             </button>
@@ -630,8 +657,8 @@ export default function ClientsPage() {
                                 ? "Activated"
                                 : client.invitationStatus ===
                                     "INVITED_NOT_CONFIRMED"
-                                  ? "Invited - Not activated"
-                                  : "Pending invite"}
+                                  ? "Invited - Pending"
+                                  : "Pending"}
                             </span>
                             {client.invitationStatus === "ACTIVATED" &&
                             client.hasSignedIn ? (
@@ -664,46 +691,52 @@ export default function ClientsPage() {
                               <FolderKanban className="h-3.5 w-3.5" />
                               Add project
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => openEditClient(client)}
-                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-sky-400 hover:text-sky-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-sky-400 dark:hover:text-sky-300"
-                              title="Edit client"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openConfirmModal("resendInvite", client)
-                              }
-                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-emerald-400 hover:text-emerald-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-emerald-400 dark:hover:text-emerald-300"
-                              title="Resend invite"
-                            >
-                              <RefreshCw className="h-3.5 w-3.5" />
-                              Invite
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openConfirmModal("resetPassword", client)
-                              }
-                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-amber-400 hover:text-amber-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-amber-400 dark:hover:text-amber-300"
-                              title="Send password reset"
-                            >
-                              <KeyRound className="h-3.5 w-3.5" />
-                              Reset
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openConfirmModal("delete", client)}
-                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-300 px-2.5 text-xs font-medium text-red-700 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
-                              title="Delete client"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Delete
-                            </button>
+                            {canManageClients ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditClient(client)}
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-sky-400 hover:text-sky-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-sky-400 dark:hover:text-sky-300"
+                                  title="Edit client"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openConfirmModal("resendInvite", client)
+                                  }
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-emerald-400 hover:text-emerald-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-emerald-400 dark:hover:text-emerald-300"
+                                  title="Resend invite"
+                                >
+                                  <RefreshCw className="h-3.5 w-3.5" />
+                                  Invite
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openConfirmModal("resetPassword", client)
+                                  }
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-amber-400 hover:text-amber-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-amber-400 dark:hover:text-amber-300"
+                                  title="Send password reset"
+                                >
+                                  <KeyRound className="h-3.5 w-3.5" />
+                                  Reset
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openConfirmModal("delete", client)
+                                  }
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-300 px-2.5 text-xs font-medium text-red-700 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
+                                  title="Delete client"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete
+                                </button>
+                              </>
+                            ) : null}
                           </div>
                         </td>
                       </tr>

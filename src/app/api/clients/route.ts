@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isInternalStaff(user.role)) {
+    if (user.role !== Role.SUPER_ADMIN) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

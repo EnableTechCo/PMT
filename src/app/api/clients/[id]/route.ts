@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Role } from "@/lib/db-types";
 import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
-
-function isInternalStaff(role: Role) {
-  return role === Role.USER || role === Role.SUPER_ADMIN;
-}
 
 export async function PATCH(
   request: NextRequest,
@@ -17,7 +12,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isInternalStaff(user.role)) {
+    if (user.role !== Role.SUPER_ADMIN) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -96,7 +91,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isInternalStaff(user.role)) {
+    if (user.role !== Role.SUPER_ADMIN) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -110,24 +105,44 @@ export async function DELETE(
       });
     }
 
-    const [projectCount, ticketCount] = await Promise.all([
-      db.project.count({ where: { clientId: id } }),
-      db.ticket.count({ where: { clientId: id } }),
-    ]);
+    // Cascade delete client-owned data first so the client can be removed in one action.
+    // Dependent records (milestones, comments, attachments, activities, github links)
+    // are removed by DB-level ON DELETE CASCADE constraints.
+    const clientProjects = await db.project.findMany({
+      where: { clientId: id },
+      select: { id: true },
+    });
+    const clientProjectIds = clientProjects.map((project) => project.id);
 
-    if (projectCount > 0 || ticketCount > 0) {
-      return NextResponse.json(
-        {
-          error:
-            "Cannot delete client with linked projects or tickets. Reassign or remove those records first.",
-        },
-        { status: 400 },
-      );
-    }
+    const deletedTickets = await db.ticket.deleteMany({
+      where: {
+        OR: [
+          { clientId: id },
+          ...(clientProjectIds.length > 0
+            ? [{ projectId: { in: clientProjectIds } }]
+            : []),
+        ],
+      },
+    });
+
+    const deletedProjects = await db.project.deleteMany({
+      where: { clientId: id },
+    });
+
+    const deletedInviteTokens = await db.inviteToken.deleteMany({
+      where: { email: existing.email },
+    });
 
     await db.client.delete({ where: { id } });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      deleted: {
+        projects: deletedProjects.count,
+        tickets: deletedTickets.count,
+        inviteTokens: deletedInviteTokens.count,
+      },
+    });
   } catch (error) {
     console.error("Delete client error:", error);
     return NextResponse.json(

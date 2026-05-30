@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { Role } from "@/lib/db-types";
 import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { findUserByEmail } from "@/lib/user-store";
 import { sendPasswordResetEmail } from "@/lib/email-service";
-
-function isInternalStaff(role: Role) {
-  return role === Role.USER || role === Role.SUPER_ADMIN;
-}
 
 export async function POST(
   request: NextRequest,
@@ -20,7 +15,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isInternalStaff(user.role)) {
+    if (user.role !== Role.SUPER_ADMIN) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

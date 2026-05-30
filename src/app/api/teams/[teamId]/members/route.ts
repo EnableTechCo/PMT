@@ -145,6 +145,7 @@ export async function GET(
           userId: memberUser.id,
           name: memberUser.name,
           email: memberUser.email,
+          phone: memberUser.phone,
           role: memberUser.role,
           invitationStatus,
         };
@@ -160,6 +161,7 @@ export async function GET(
           userId: string;
           name: string;
           email: string;
+          phone: string | null;
           role: Role;
           invitationStatus: InvitationStatus;
         } => member !== null,

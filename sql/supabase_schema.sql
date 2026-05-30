@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS "User" (
   email text NOT NULL UNIQUE,
   password text NOT NULL DEFAULT '',
   name text NOT NULL,
+  phone text,
   role role NOT NULL DEFAULT 'USER',
   "teamId" uuid REFERENCES "Team"(id) ON DELETE SET NULL,
   "githubToken" text,

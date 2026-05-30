@@ -8,6 +8,7 @@ interface User {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
   role: string;
   teamId?: string | null;
   /** null when super admin (all teams); array for scoped employees */

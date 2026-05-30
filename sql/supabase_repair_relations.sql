@@ -6,6 +6,14 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 DO $$
 BEGIN
+  -- Ensure optional User profile fields exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'User' AND column_name = 'phone'
+  ) THEN
+    ALTER TABLE "User" ADD COLUMN phone text;
+  END IF;
+
   -- Ensure Project relation columns exist
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns

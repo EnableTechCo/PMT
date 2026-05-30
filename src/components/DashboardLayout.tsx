@@ -18,6 +18,7 @@ import {
   Settings,
   User,
   ChevronDown,
+  ChevronRight,
   Power,
   Moon,
   Sun,
@@ -53,6 +54,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [mobileWorkspaceOpen, setMobileWorkspaceOpen] = useState(false);
+  const [desktopWorkspaceOpen, setDesktopWorkspaceOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const { user, logout } = useAuth();
@@ -95,6 +98,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const pathname = usePathname();
   const isClient = user?.role === "CLIENT";
+  const breadcrumbLabel =
+    navigation
+      .slice()
+      .sort((a, b) => b.href.length - a.href.length)
+      .find(
+        (nav) => pathname === nav.href || pathname.startsWith(`${nav.href}/`),
+      )?.name || "Workspace";
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -242,81 +252,101 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Link>
               );
             })}
-          </nav>
 
-          {!isClient && (
-            <div className="border-t border-[var(--border)] p-4 dark:border-gray-800">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500">
-                  Workspace
-                </h3>
-                {user.role === "SUPER_ADMIN" && (
-                  <Link
-                    href="/teams"
-                    className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    Manage
-                  </Link>
-                )}
-              </div>
-              {teamNavLoading ? (
-                <p className="px-1 text-xs text-gray-500">Loading teams…</p>
-              ) : user.role === "SUPER_ADMIN" ? (
-                <div className="max-h-48 space-y-0.5 overflow-y-auto">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAllTeamsMode(true);
-                      setSidebarOpen(false);
-                    }}
-                    className={cn(
-                      "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
-                      isAllTeams
-                        ? "bg-brand-50 font-medium text-brand-800 dark:bg-brand-950/50 dark:text-brand-200"
-                        : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+            {!isClient ? (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setMobileWorkspaceOpen((prev) => !prev)}
+                  className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-all duration-200 ease-out hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white"
+                >
+                  <Users2 className="h-[18px] w-[18px] shrink-0 text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400" />
+                  <span className="flex-1 text-left">Workspace</span>
+                  {mobileWorkspaceOpen ? (
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-gray-500" />
+                  )}
+                </button>
+
+                {mobileWorkspaceOpen ? (
+                  <div className="mt-2 space-y-2 rounded-lg border border-[var(--border)] bg-white/70 p-2 dark:border-gray-800 dark:bg-white/[0.03]">
+                    {teamNavLoading ? (
+                      <p className="px-2 py-1 text-xs text-gray-500">
+                        Loading teams...
+                      </p>
+                    ) : user.role === "SUPER_ADMIN" ? (
+                      <>
+                        <div className="flex items-center justify-between px-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                            Scope
+                          </span>
+                          <Link
+                            href="/teams"
+                            className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                            onClick={() => setSidebarOpen(false)}
+                          >
+                            Manage
+                          </Link>
+                        </div>
+                        <div className="max-h-44 space-y-1 overflow-y-auto">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAllTeamsMode(true);
+                              setSidebarOpen(false);
+                            }}
+                            className={cn(
+                              "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                              isAllTeams
+                                ? "bg-brand-50 font-medium text-brand-800 dark:bg-brand-950/50 dark:text-brand-200"
+                                : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+                            )}
+                          >
+                            All teams
+                          </button>
+                          {teams.map((team) => (
+                            <button
+                              key={team.id}
+                              type="button"
+                              onClick={() => {
+                                setAllTeamsMode(false);
+                                setActiveTeamId(team.id);
+                                setSidebarOpen(false);
+                              }}
+                              className={cn(
+                                "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                                !isAllTeams && activeTeamId === team.id
+                                  ? "bg-gray-100 font-medium text-gray-900 dark:bg-gray-800 dark:text-white"
+                                  : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+                              )}
+                            >
+                              {team.name}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <SelectMenu
+                        value={activeTeamId}
+                        onChange={(v) => {
+                          setActiveTeamId(v);
+                          setSidebarOpen(false);
+                        }}
+                        disabled={teams.length === 0}
+                        options={teams.map((t) => ({
+                          value: t.id,
+                          label: t.name,
+                        }))}
+                        placeholder="Choose team"
+                        className="w-full"
+                      />
                     )}
-                  >
-                    All teams
-                  </button>
-                  {teams.map((team) => (
-                    <button
-                      key={team.id}
-                      type="button"
-                      onClick={() => {
-                        setAllTeamsMode(false);
-                        setActiveTeamId(team.id);
-                        setSidebarOpen(false);
-                      }}
-                      className={cn(
-                        "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
-                        !isAllTeams && activeTeamId === team.id
-                          ? "bg-gray-100 font-medium text-gray-900 dark:bg-gray-800 dark:text-white"
-                          : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
-                      )}
-                    >
-                      {team.name}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <SelectMenu
-                  value={activeTeamId}
-                  onChange={(v) => {
-                    setActiveTeamId(v);
-                    setSidebarOpen(false);
-                  }}
-                  disabled={teams.length === 0}
-                  options={teams.map((t) => ({
-                    value: t.id,
-                    label: t.name,
-                  }))}
-                  placeholder="Choose team"
-                  className="w-full"
-                />
-              )}
-            </div>
-          )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </nav>
 
           {/* Mobile User Info */}
           <div className="border-t border-[var(--border)] p-4 dark:border-gray-800">
@@ -396,73 +426,93 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Link>
               );
             })}
-          </nav>
 
-          {!isClient && (
-            <div className="border-t border-[var(--border)] p-4 dark:border-gray-800">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500">
-                  Workspace
-                </h3>
-                {user.role === "SUPER_ADMIN" && (
-                  <Link
-                    href="/teams"
-                    className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
-                  >
-                    Manage
-                  </Link>
-                )}
-              </div>
-              {teamNavLoading ? (
-                <p className="px-1 text-xs text-gray-500">Loading teams…</p>
-              ) : user.role === "SUPER_ADMIN" ? (
-                <div className="max-h-48 space-y-0.5 overflow-y-auto">
-                  <button
-                    type="button"
-                    onClick={() => setAllTeamsMode(true)}
-                    className={cn(
-                      "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
-                      isAllTeams
-                        ? "bg-brand-50 font-medium text-brand-800 dark:bg-brand-950/50 dark:text-brand-200"
-                        : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+            {!isClient ? (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setDesktopWorkspaceOpen((prev) => !prev)}
+                  className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-all duration-200 ease-out hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white"
+                >
+                  <Users2 className="h-[18px] w-[18px] shrink-0 text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400" />
+                  <span className="flex-1 text-left">Workspace</span>
+                  {desktopWorkspaceOpen ? (
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-gray-500" />
+                  )}
+                </button>
+
+                {desktopWorkspaceOpen ? (
+                  <div className="mt-2 space-y-2 rounded-lg border border-[var(--border)] bg-white/70 p-2 dark:border-gray-800 dark:bg-white/[0.03]">
+                    {teamNavLoading ? (
+                      <p className="px-2 py-1 text-xs text-gray-500">
+                        Loading teams...
+                      </p>
+                    ) : user.role === "SUPER_ADMIN" ? (
+                      <>
+                        <div className="flex items-center justify-between px-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                            Scope
+                          </span>
+                          <Link
+                            href="/teams"
+                            className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                          >
+                            Manage
+                          </Link>
+                        </div>
+                        <div className="max-h-44 space-y-1 overflow-y-auto">
+                          <button
+                            type="button"
+                            onClick={() => setAllTeamsMode(true)}
+                            className={cn(
+                              "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                              isAllTeams
+                                ? "bg-brand-50 font-medium text-brand-800 dark:bg-brand-950/50 dark:text-brand-200"
+                                : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+                            )}
+                          >
+                            All teams
+                          </button>
+                          {teams.map((team) => (
+                            <button
+                              key={team.id}
+                              type="button"
+                              onClick={() => {
+                                setAllTeamsMode(false);
+                                setActiveTeamId(team.id);
+                              }}
+                              className={cn(
+                                "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                                !isAllTeams && activeTeamId === team.id
+                                  ? "bg-gray-100 font-medium text-gray-900 dark:bg-gray-800 dark:text-white"
+                                  : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
+                              )}
+                            >
+                              {team.name}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <SelectMenu
+                        value={activeTeamId}
+                        onChange={setActiveTeamId}
+                        disabled={teams.length === 0}
+                        options={teams.map((t) => ({
+                          value: t.id,
+                          label: t.name,
+                        }))}
+                        placeholder="Choose team"
+                        className="w-full"
+                      />
                     )}
-                  >
-                    All teams
-                  </button>
-                  {teams.map((team) => (
-                    <button
-                      key={team.id}
-                      type="button"
-                      onClick={() => {
-                        setAllTeamsMode(false);
-                        setActiveTeamId(team.id);
-                      }}
-                      className={cn(
-                        "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
-                        !isAllTeams && activeTeamId === team.id
-                          ? "bg-gray-100 font-medium text-gray-900 dark:bg-gray-800 dark:text-white"
-                          : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5",
-                      )}
-                    >
-                      {team.name}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <SelectMenu
-                  value={activeTeamId}
-                  onChange={setActiveTeamId}
-                  disabled={teams.length === 0}
-                  options={teams.map((t) => ({
-                    value: t.id,
-                    label: t.name,
-                  }))}
-                  placeholder="Choose team"
-                  className="w-full"
-                />
-              )}
-            </div>
-          )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </nav>
 
           {/* Desktop User Info */}
           <div className="relative border-t border-[var(--border)] p-4 dark:border-gray-800">
@@ -563,9 +613,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </span>
                   <span className="text-gray-300 dark:text-gray-600">/</span>
                   <span className="font-medium text-gray-900 dark:text-white">
-                    {/* Use navigation tab titles and not hardcoded */}
-                    {navigation.find((nav) => nav.href === pathname)?.name ||
-                      "Workspace"}
+                    {breadcrumbLabel}
                   </span>
                 </div>
               </div>

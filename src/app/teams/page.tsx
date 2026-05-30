@@ -75,7 +75,7 @@ export default function TeamsAdminPage() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-3xl space-y-8">
+      <div className="w-full space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Teams

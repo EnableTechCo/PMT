@@ -9,10 +9,6 @@ import {
   sendPasswordResetEmail,
 } from "@/lib/email-service";
 
-function isInternalStaff(role: Role) {
-  return role === Role.USER || role === Role.SUPER_ADMIN;
-}
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -23,7 +19,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isInternalStaff(user.role)) {
+    if (user.role !== Role.SUPER_ADMIN) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
