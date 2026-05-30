@@ -160,6 +160,12 @@ export default function TeamDetailPage() {
         return;
       }
 
+      if (body.removed === false) {
+        setWarning("No membership row was deleted. Refresh and try again.");
+        await loadMembers();
+        return;
+      }
+
       await loadMembers();
       setNotice(`Removed ${targetMember.name} from this team.`);
     } catch {

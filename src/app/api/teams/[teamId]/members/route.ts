@@ -383,7 +383,7 @@ export async function DELETE(
     where: { teamId, userId },
   });
   if (deleted.count === 0) {
-    return NextResponse.json({ ok: true, removed: false });
+    return NextResponse.json({ ok: true, removed: false, deletedCount: 0 });
   }
 
   const remaining = await db.teamMembership.findMany({
@@ -408,5 +408,9 @@ export async function DELETE(
     metadata: { teamName: team.name, userId },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    removed: true,
+    deletedCount: deleted.count,
+  });
 }
