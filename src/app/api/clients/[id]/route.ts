@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
+import { Role } from "@/lib/db-types";
 
 export async function PATCH(
   request: NextRequest,
