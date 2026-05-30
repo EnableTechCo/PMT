@@ -347,9 +347,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Desktop sidebar */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-50 lg:block lg:w-64">
         <div className="flex h-full flex-col border-r border-[var(--border)] bg-gradient-to-b from-slate-50/95 to-[var(--sidebar)] dark:border-gray-800 dark:from-[#16161c] dark:to-[#13131a]">
-          <div className="flex items-center gap-2 border-b border-[var(--border)] p-4 dark:border-gray-800">
-            <h1 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
-              PMT HUB
+          <div className="h-20 flex items-center gap-2 border-b border-[var(--border)] p-4 dark:border-gray-800">
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Enable Tech Co
+              <br />
+              <span className="-mt-1 block text-sm font-normal text-gray-500 dark:text-gray-400">
+                Project Management Tool
+              </span>
             </h1>
           </div>
 
@@ -462,8 +466,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
           {/* Desktop User Info */}
           <div className="relative border-t border-[var(--border)] p-4 dark:border-gray-800">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
+            <div
+              className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-white/5"
+              onClick={() => setShowUserMenu(!showUserMenu)}
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white mouse-pointer">
                 {user.name.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
@@ -556,7 +563,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </span>
                   <span className="text-gray-300 dark:text-gray-600">/</span>
                   <span className="font-medium text-gray-900 dark:text-white">
-                    Workspace
+                    {/* Use navigation tab titles and not hardcoded */}
+                    {navigation.find((nav) => nav.href === pathname)?.name ||
+                      "Workspace"}
                   </span>
                 </div>
               </div>
