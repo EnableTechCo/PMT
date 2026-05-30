@@ -9,6 +9,7 @@ import {
 import { getUserWithTeamAccess, canAccessTeam } from "@/lib/access";
 import { writeAuditLog } from "@/lib/audit";
 import { sendAdminInviteEmail } from "@/lib/email-service";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 import {
   createUser,
   findUserByEmail,
@@ -280,7 +281,8 @@ export async function POST(
   });
 
   try {
-    const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(target.email)}&inviteToken=${encodeURIComponent(inviteToken)}`;
+    const appBaseUrl = resolveAppBaseUrl(request.url);
+    const loginLink = `${appBaseUrl}/auth/login?email=${encodeURIComponent(target.email)}&inviteToken=${encodeURIComponent(inviteToken)}`;
     console.log("[Team Add] sending invite email", {
       teamId,
       teamName: team.name,
@@ -302,6 +304,7 @@ export async function POST(
       target.name,
       team.name,
       loginLink,
+      appBaseUrl,
     );
 
     console.log("[Team Add] invite email sent", {

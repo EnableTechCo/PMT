@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 
 function parseBoolean(value: string | undefined, fallback: boolean) {
   if (value === undefined) return fallback;
@@ -105,12 +106,16 @@ function getFromName() {
   return process.env.SMTP_FROM_NAME || "Enable Project Management";
 }
 
-function buildInviteLink(inviteToken: string, invitePathOrUrl: string) {
+function buildInviteLink(
+  inviteToken: string,
+  invitePathOrUrl: string,
+  appBaseUrl?: string,
+) {
   if (/^https?:\/\//i.test(invitePathOrUrl)) {
     return invitePathOrUrl;
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = resolveAppBaseUrl(appBaseUrl);
 
   if (invitePathOrUrl.includes("{token}")) {
     return `${baseUrl}${invitePathOrUrl.replace("{token}", inviteToken)}`;
@@ -400,8 +405,9 @@ export async function sendAdminInviteEmail(
   recipientName: string,
   teamName?: string,
   invitePathOrUrl: string = "/auth/invite?token=",
+  appBaseUrl?: string,
 ) {
-  const inviteLink = buildInviteLink(inviteToken, invitePathOrUrl);
+  const inviteLink = buildInviteLink(inviteToken, invitePathOrUrl, appBaseUrl);
 
   let htmlContent = await loadTemplate("invite.html", {
     RECIPIENT_NAME: recipientName || "",
@@ -440,8 +446,9 @@ export async function sendPasswordResetEmail(
   resetToken: string,
   recipientName: string,
   teamName?: string,
+  appBaseUrl?: string,
 ) {
-  const resetLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/reset-password?token=${resetToken}`;
+  const resetLink = `${resolveAppBaseUrl(appBaseUrl)}/auth/reset-password?token=${resetToken}`;
 
   let htmlContent = await loadTemplate("reset-password.html", {
     RECIPIENT_NAME: recipientName || "",

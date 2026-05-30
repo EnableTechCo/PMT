@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { sendAdminInviteEmail } from "@/lib/email-service";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 import crypto from "node:crypto";
 
 function isInternalStaff(role: Role) {
@@ -157,6 +158,7 @@ export async function POST(request: NextRequest) {
 
     if (isInvited) {
       try {
+        const appBaseUrl = resolveAppBaseUrl(request.url);
         const inviteToken = crypto.randomBytes(32).toString("hex");
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -170,7 +172,14 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        await sendAdminInviteEmail(normalizedEmail, inviteToken, name);
+        await sendAdminInviteEmail(
+          normalizedEmail,
+          inviteToken,
+          name,
+          undefined,
+          "/auth/invite?token=",
+          appBaseUrl,
+        );
       } catch (inviteError) {
         console.error("Client invite email error:", inviteError);
         await db.client.update({

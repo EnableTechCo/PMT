@@ -6,6 +6,7 @@ import { getUserFromRequest } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
 import { sendAdminInviteEmail } from "@/lib/email-service";
 import { findUserById } from "@/lib/user-store";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 
 export async function POST(
   request: NextRequest,
@@ -69,13 +70,15 @@ export async function POST(
     });
 
     try {
-      const loginLink = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(member.email)}&inviteToken=${encodeURIComponent(token)}`;
+      const appBaseUrl = resolveAppBaseUrl(request.url);
+      const loginLink = `${appBaseUrl}/auth/login?email=${encodeURIComponent(member.email)}&inviteToken=${encodeURIComponent(token)}`;
       await sendAdminInviteEmail(
         member.email,
         token,
         member.name,
         team.name,
         loginLink,
+        appBaseUrl,
       );
     } catch (error) {
       console.error("Team member resend invite email error:", error);

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import crypto from "crypto";
 import { getUserByEmail } from "@/lib/auth";
 import { sendPasswordResetEmail } from "@/lib/email-service";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,7 +42,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    await sendPasswordResetEmail(user.email, token, user.name || user.email);
+    const appBaseUrl = resolveAppBaseUrl(request.url);
+    await sendPasswordResetEmail(
+      user.email,
+      token,
+      user.name || user.email,
+      undefined,
+      appBaseUrl,
+    );
 
     return NextResponse.json({
       message:

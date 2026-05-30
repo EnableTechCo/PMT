@@ -113,7 +113,9 @@ export async function DELETE(
       where: { clientId: id },
       select: { id: true },
     });
-    const clientProjectIds = clientProjects.map((project) => project.id);
+    const clientProjectIds = clientProjects.map(
+      (project: { id: string }) => project.id,
+    );
 
     const deletedTickets = await db.ticket.deleteMany({
       where: {

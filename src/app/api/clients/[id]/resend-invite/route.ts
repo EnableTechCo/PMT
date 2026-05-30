@@ -8,6 +8,7 @@ import {
   sendAdminInviteEmail,
   sendPasswordResetEmail,
 } from "@/lib/email-service";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 
 export async function POST(
   request: NextRequest,
@@ -30,6 +31,7 @@ export async function POST(
     }
 
     const existingUser = await findUserByEmail(client.email);
+    const appBaseUrl = resolveAppBaseUrl(request.url);
 
     if (existingUser) {
       const token = crypto.randomBytes(32).toString("hex");
@@ -43,7 +45,13 @@ export async function POST(
         },
       });
 
-      await sendPasswordResetEmail(client.email, token, client.name);
+      await sendPasswordResetEmail(
+        client.email,
+        token,
+        client.name,
+        undefined,
+        appBaseUrl,
+      );
 
       return NextResponse.json({
         success: true,
@@ -66,7 +74,14 @@ export async function POST(
       },
     });
 
-    await sendAdminInviteEmail(client.email, inviteToken, client.name);
+    await sendAdminInviteEmail(
+      client.email,
+      inviteToken,
+      client.name,
+      undefined,
+      "/auth/invite?token=",
+      appBaseUrl,
+    );
 
     await db.client.update({
       where: { id: client.id },

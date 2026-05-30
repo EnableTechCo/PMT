@@ -4,6 +4,7 @@ import { sendAdminInviteEmail } from "@/lib/email-service";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { findUserByEmail, findUserById } from "@/lib/user-store";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 
 // GET - Validate invite token
 export async function GET(request: NextRequest) {
@@ -121,10 +122,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const appBaseUrl = resolveAppBaseUrl(request.url);
+
     const inviteLink =
       role === "CLIENT"
         ? "/auth/invite?token="
-        : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(email)}&inviteToken=${encodeURIComponent(inviteToken)}`;
+        : `${appBaseUrl}/auth/login?email=${encodeURIComponent(email)}&inviteToken=${encodeURIComponent(inviteToken)}`;
 
     // Send invite email — prefer provided name, else use local-part of email
     const inviteName =
@@ -138,6 +141,7 @@ export async function POST(request: NextRequest) {
       inviteName,
       undefined,
       inviteLink,
+      appBaseUrl,
     );
 
     return NextResponse.json(

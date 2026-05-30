@@ -9,6 +9,7 @@ import { sendAdminInviteEmail } from "@/lib/email-service";
 import { Role } from "@/lib/db-types";
 import { randomBytes } from "node:crypto";
 import { createUser, findUserByEmail } from "@/lib/user-store";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 
 const ALLOWED_INVITE_ROLES = new Set<Role>([
   Role.USER,
@@ -120,13 +121,22 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const appBaseUrl = resolveAppBaseUrl(request.url);
+
     const inviteLink =
       selectedRole === Role.CLIENT
         ? "/auth/invite?token="
-        : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login?email=${encodeURIComponent(email)}&inviteToken=${encodeURIComponent(token)}`;
+        : `${appBaseUrl}/auth/login?email=${encodeURIComponent(email)}&inviteToken=${encodeURIComponent(token)}`;
 
     // Use the invite HTML template for the admin invite and point the CTA to the correct entry flow
-    await sendAdminInviteEmail(email, token, name, team?.name, inviteLink);
+    await sendAdminInviteEmail(
+      email,
+      token,
+      name,
+      team?.name,
+      inviteLink,
+      appBaseUrl,
+    );
 
     return NextResponse.json({
       message: "Invite sent successfully",

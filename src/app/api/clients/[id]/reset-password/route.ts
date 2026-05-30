@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { findUserByEmail } from "@/lib/user-store";
 import { sendPasswordResetEmail } from "@/lib/email-service";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 
 export async function POST(
   request: NextRequest,
@@ -48,7 +49,14 @@ export async function POST(
       },
     });
 
-    await sendPasswordResetEmail(client.email, token, client.name);
+    const appBaseUrl = resolveAppBaseUrl(request.url);
+    await sendPasswordResetEmail(
+      client.email,
+      token,
+      client.name,
+      undefined,
+      appBaseUrl,
+    );
 
     return NextResponse.json({
       success: true,
