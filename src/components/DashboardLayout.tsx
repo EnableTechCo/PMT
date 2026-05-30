@@ -28,6 +28,7 @@ import {
   Bell,
   FileText,
   Workflow,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeam } from "@/contexts/TeamContext";
@@ -84,6 +85,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           { name: "Docs", href: "/docs", icon: FileText },
           { name: "Teams", href: "/teams", icon: Users2 },
           { name: "Projects", href: "/projects", icon: FolderKanban },
+          { name: "Monitoring", href: "/monitoring", icon: Activity },
           { name: "Workflows", href: "/workflows", icon: Workflow },
         ]
       : [
