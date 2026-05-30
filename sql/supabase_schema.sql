@@ -295,6 +295,21 @@ CREATE TABLE IF NOT EXISTS "InviteToken" (
   "createdAt" timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS "BackupSnapshot" (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  label text NOT NULL,
+  "triggerType" text NOT NULL,
+  "generatedAt" timestamptz NOT NULL DEFAULT now(),
+  "generatedById" uuid REFERENCES "User"(id) ON DELETE SET NULL,
+  "generatedByEmail" text,
+  "generatedByName" text,
+  snapshot text NOT NULL,
+  "tableCounts" text NOT NULL,
+  "restoredAt" timestamptz,
+  "restoredById" uuid REFERENCES "User"(id) ON DELETE SET NULL,
+  "createdAt" timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_ticket_team ON "Ticket"("teamId");
 CREATE INDEX IF NOT EXISTS idx_ticket_creator ON "Ticket"("creatorId");
 CREATE INDEX IF NOT EXISTS idx_ticket_assignee ON "Ticket"("assigneeId");
@@ -318,6 +333,9 @@ CREATE INDEX IF NOT EXISTS idx_passwordreset_user ON "PasswordReset"("userId");
 CREATE INDEX IF NOT EXISTS idx_passwordreset_token ON "PasswordReset"(token);
 CREATE INDEX IF NOT EXISTS idx_invitetoken_email ON "InviteToken"(email);
 CREATE INDEX IF NOT EXISTS idx_invitetoken_expiresat ON "InviteToken"("expiresAt");
+CREATE INDEX IF NOT EXISTS idx_backups_generatedat ON "BackupSnapshot"("generatedAt");
+CREATE INDEX IF NOT EXISTS idx_backups_trigger ON "BackupSnapshot"("triggerType");
+CREATE INDEX IF NOT EXISTS idx_backups_createdat ON "BackupSnapshot"("createdAt");
 
 INSERT INTO "OrganizationSettings" (id)
 VALUES ('default')

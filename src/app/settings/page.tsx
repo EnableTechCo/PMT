@@ -19,6 +19,8 @@ import {
   Lock,
   Database,
   Download,
+  RefreshCcw,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +30,18 @@ interface GithubUser {
 }
 
 type GithubConnectionSource = "system" | "user";
+
+type BackupHistoryItem = {
+  id: string;
+  label: string;
+  triggerType: string;
+  generatedAt: string;
+  generatedByName: string | null;
+  generatedByEmail: string | null;
+  restoredAt: string | null;
+  restoredById: string | null;
+  tableCounts: Record<string, number>;
+};
 
 export default function SettingsPage() {
   return (
@@ -53,9 +67,9 @@ function SettingsPageContent() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
-  const [activeTab, setActiveTab] = useState<"profile" | "github" | "security" | "backup">(
-    "github",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "profile" | "github" | "security" | "backup"
+  >("github");
 
   // GitHub integration state
   const [githubToken, setGithubToken] = useState("");
@@ -77,7 +91,16 @@ function SettingsPageContent() {
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupMessage, setBackupMessage] = useState("");
   const [backupError, setBackupError] = useState("");
-  const [backupSummary, setBackupSummary] = useState<Record<string, number> | null>(null);
+  const [backupSummary, setBackupSummary] = useState<Record<
+    string,
+    number
+  > | null>(null);
+  const [backupRecords, setBackupRecords] = useState<BackupHistoryItem[]>([]);
+  const [backupRecordsLoading, setBackupRecordsLoading] = useState(false);
+  const [backupRecordsError, setBackupRecordsError] = useState("");
+  const [selectedRestoreBackup, setSelectedRestoreBackup] =
+    useState<BackupHistoryItem | null>(null);
+  const [restoringBackupId, setRestoringBackupId] = useState("");
 
   // User Profile display state (dummy/read-only for beauty)
   const [name, setName] = useState("");
@@ -118,6 +141,11 @@ function SettingsPageContent() {
       setConnectError("GitHub OAuth state validation failed. Please retry.");
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (activeTab !== "backup" || !isSuperAdmin) return;
+    void loadBackups();
+  }, [activeTab, isSuperAdmin]);
 
   async function sendTestEmail() {
     setTestEmailLoading(true);
@@ -655,31 +683,50 @@ function SettingsPageContent() {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void downloadBackup();
-                    }}
-                    disabled={backupLoading}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {backupLoading ? (
-                      <>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void loadBackups();
+                      }}
+                      disabled={backupRecordsLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      {backupRecordsLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Creating backup...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-4 w-4" />
-                        Download backup
-                      </>
-                    )}
-                  </button>
+                      ) : (
+                        <RefreshCcw className="h-4 w-4" />
+                      )}
+                      Refresh history
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void downloadBackup();
+                      }}
+                      disabled={backupLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {backupLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Creating backup...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4" />
+                          Download backup
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
-                  This exports the current database snapshot as JSON. Keep the file private,
-                  because it includes application data and credentials stored in the database.
+                  This exports the current database snapshot as JSON. Keep the
+                  file private, because it includes application data and
+                  credentials stored in the database.
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
@@ -688,8 +735,9 @@ function SettingsPageContent() {
                       How it works
                     </p>
                     <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                      The server reads every core table directly from the database and returns a
-                      downloadable JSON file with timestamps, counts, and row data.
+                      The server reads every core table directly from the
+                      database and returns a downloadable JSON file with
+                      timestamps, counts, and row data.
                     </p>
                   </div>
 
@@ -698,32 +746,149 @@ function SettingsPageContent() {
                       Backup contents
                     </p>
                     <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                      Teams, users, clients, projects, tickets, audit logs, documents,
-                      automations, GitHub links, notifications, settings, and recovery tokens.
+                      Teams, users, clients, projects, tickets, audit logs,
+                      documents, automations, GitHub links, notifications,
+                      settings, and recovery tokens.
                     </p>
                   </div>
                 </div>
 
-                {backupSummary ? (
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13131a] p-4">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                      Last backup snapshot counts
-                    </p>
-                    <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-                      {Object.entries(backupSummary).map(([key, value]) => (
-                        <div
-                          key={key}
-                          className="rounded-lg border border-gray-200 dark:border-gray-800 p-3"
-                        >
-                          <p className="text-xs uppercase tracking-wider text-gray-500">{key}</p>
-                          <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
-                            {value}
-                          </p>
-                        </div>
-                      ))}
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13131a] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        Backup history
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Nightly backups arrive automatically from the scheduled
+                        workflow. Manual exports also appear here.
+                      </p>
                     </div>
+                    {backupSummary ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Latest snapshot includes{" "}
+                        {Object.values(backupSummary).reduce(
+                          (sum, value) => sum + value,
+                          0,
+                        )}{" "}
+                        total rows.
+                      </p>
+                    ) : null}
                   </div>
-                ) : null}
+
+                  {backupRecordsError ? (
+                    <p className="mt-3 text-sm text-red-600 dark:text-red-300">
+                      {backupRecordsError}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+                    {backupRecordsLoading ? (
+                      <div className="flex items-center gap-2 p-4 text-sm text-gray-500">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                        backup history...
+                      </div>
+                    ) : backupRecords.length === 0 ? (
+                      <div className="p-4 text-sm text-gray-500">
+                        No backups yet. Create the first manual backup or wait
+                        for the nightly schedule.
+                      </div>
+                    ) : (
+                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                        <thead className="bg-gray-50 dark:bg-gray-900/60">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                              Backup
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                              Type
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                              Created
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                              Status
+                            </th>
+                            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                          {backupRecords.map((backup) => (
+                            <tr key={backup.id}>
+                              <td className="px-4 py-4 align-top">
+                                <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                                  {backup.label}
+                                </div>
+                                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                  By{" "}
+                                  {backup.generatedByName ||
+                                    backup.generatedByEmail ||
+                                    "system"}
+                                </div>
+                                <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-500">
+                                  {Object.values(backup.tableCounts).reduce(
+                                    (sum, value) => sum + value,
+                                    0,
+                                  )}{" "}
+                                  rows
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 align-top text-sm text-gray-600 dark:text-gray-300">
+                                {backup.triggerType.replace(/_/g, " ")}
+                              </td>
+                              <td className="px-4 py-4 align-top text-sm text-gray-600 dark:text-gray-300">
+                                {new Date(backup.generatedAt).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-4 align-top text-sm text-gray-600 dark:text-gray-300">
+                                {backup.restoredAt ? (
+                                  <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-300">
+                                    Restored
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+                                    Ready
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-4 align-top">
+                                <div className="flex flex-wrap justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setBackupError("");
+                                      setBackupMessage("");
+                                      window.location.href = `/api/settings/backups/${backup.id}?download=1`;
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                                  >
+                                    <Download className="h-3.5 w-3.5" />
+                                    Download
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => requestRestoreBackup(backup)}
+                                    disabled={restoringBackupId === backup.id}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/20"
+                                  >
+                                    {restoringBackupId === backup.id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <RotateCcw className="h-3.5 w-3.5" />
+                                    )}
+                                    Restore
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
 
                 {backupMessage ? (
                   <p className="text-sm text-emerald-700 dark:text-emerald-300">
@@ -732,7 +897,9 @@ function SettingsPageContent() {
                 ) : null}
 
                 {backupError ? (
-                  <p className="text-sm text-red-600 dark:text-red-300">{backupError}</p>
+                  <p className="text-sm text-red-600 dark:text-red-300">
+                    {backupError}
+                  </p>
                 ) : null}
               </div>
             ) : null}
@@ -748,6 +915,21 @@ function SettingsPageContent() {
         onConfirm={() => {
           setShowDisconnectConfirm(false);
           void handleDisconnect();
+        }}
+      />
+      <ConfirmDialog
+        isOpen={Boolean(selectedRestoreBackup)}
+        title="Restore backup"
+        message={
+          selectedRestoreBackup
+            ? `Restore ${selectedRestoreBackup.label}? This will replace current app data with the selected snapshot. A safety backup is created first.`
+            : "Restore selected backup?"
+        }
+        confirmLabel="Restore"
+        onCancel={() => setSelectedRestoreBackup(null)}
+        onConfirm={() => {
+          if (!selectedRestoreBackup) return;
+          void restoreBackup(selectedRestoreBackup);
         }}
       />
     </DashboardLayout>
@@ -836,6 +1018,78 @@ function SettingsPageContent() {
     window.location.href = "/api/github/oauth/start";
   }
 
+  async function loadBackups() {
+    setBackupRecordsLoading(true);
+    setBackupRecordsError("");
+
+    try {
+      const res = await fetch("/api/settings/backups?take=20");
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to load backup history",
+        );
+      }
+
+      const backups = Array.isArray(body.backups)
+        ? (body.backups as BackupHistoryItem[])
+        : [];
+      setBackupRecords(backups);
+
+      if (backups[0]) {
+        setBackupSummary(backups[0].tableCounts ?? null);
+      }
+    } catch (error) {
+      setBackupRecordsError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load backup history",
+      );
+    } finally {
+      setBackupRecordsLoading(false);
+    }
+  }
+
+  function requestRestoreBackup(backup: BackupHistoryItem) {
+    setSelectedRestoreBackup(backup);
+  }
+
+  async function restoreBackup(backup: BackupHistoryItem) {
+    setRestoringBackupId(backup.id);
+    setBackupError("");
+    setBackupMessage("");
+
+    try {
+      const res = await fetch(`/api/settings/backups/${backup.id}`, {
+        method: "POST",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to restore backup",
+        );
+      }
+
+      setBackupMessage(
+        `Restored backup ${backup.label}. A safety snapshot was created before the restore.`,
+      );
+      await loadBackups();
+    } catch (error) {
+      setBackupError(
+        error instanceof Error ? error.message : "Failed to restore backup",
+      );
+    } finally {
+      setRestoringBackupId("");
+      setSelectedRestoreBackup(null);
+    }
+  }
+
   async function downloadBackup() {
     setBackupLoading(true);
     setBackupMessage("");
@@ -849,7 +1103,9 @@ function SettingsPageContent() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
-          typeof body.error === "string" ? body.error : "Failed to create backup",
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to create backup",
         );
       }
 
@@ -869,6 +1125,7 @@ function SettingsPageContent() {
       setBackupMessage(
         "Backup created and downloaded successfully. Store it in a secure location.",
       );
+      await loadBackups();
     } catch (error) {
       setBackupError(
         error instanceof Error ? error.message : "Failed to create backup",

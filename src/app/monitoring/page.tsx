@@ -90,7 +90,11 @@ export default function MonitoringPage() {
       setOverview(body as MonitoringOverview);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load monitoring overview");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load monitoring overview",
+      );
     } finally {
       setLoading(false);
     }
@@ -112,7 +116,8 @@ export default function MonitoringPage() {
 
   const healthTone = useMemo(() => {
     const status = overview?.health.status ?? "unknown";
-    if (status === "healthy") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    if (status === "healthy")
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
     if (status === "unhealthy") return "bg-red-50 text-red-700 border-red-200";
     return "bg-amber-50 text-amber-700 border-amber-200";
   }, [overview]);
@@ -144,7 +149,8 @@ export default function MonitoringPage() {
               <Radar className="h-7 w-7 text-indigo-500" /> Monitoring
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-gray-400">
-              Super admin visibility for app health, audit activity, and external observability tooling.
+              Super admin visibility for app health, audit activity, and
+              external observability tooling.
             </p>
           </div>
 
@@ -169,23 +175,33 @@ export default function MonitoringPage() {
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">App health</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  App health
+                </p>
                 <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
                   {overview?.health.status || (loading ? "Loading" : "Unknown")}
                 </p>
               </div>
-              <div className={cn("rounded-full border px-3 py-1 text-xs font-semibold", healthTone)}>
+              <div
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-semibold",
+                  healthTone,
+                )}
+              >
                 {overview?.health.status || "unknown"}
               </div>
             </div>
             <div className="mt-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               <Activity className="h-4 w-4" />
-              Last check {overview ? formatDate(overview.health.timestamp) : "pending"}
+              Last check{" "}
+              {overview ? formatDate(overview.health.timestamp) : "pending"}
             </div>
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Runtime</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Runtime
+            </p>
             <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
               {overview ? formatDuration(overview.health.uptime) : "--"}
             </p>
@@ -195,18 +211,24 @@ export default function MonitoringPage() {
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Database</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Database
+            </p>
             <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
               <Database className="h-6 w-6 text-indigo-500" />
               {overview?.health.database.reachable ? "Reachable" : "Pending"}
             </div>
             <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
-              {overview ? `${overview.health.database.users} users tracked` : "Loading database status"}
+              {overview
+                ? `${overview.health.database.users} users tracked`
+                : "Loading database status"}
             </p>
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Audit feed</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Audit feed
+            </p>
             <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
               <ShieldCheck className="h-6 w-6 text-emerald-500" />
               {overview?.auditLogs.length ?? 0}
@@ -221,7 +243,9 @@ export default function MonitoringPage() {
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900 lg:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Sentry</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Sentry
+                </h2>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                   Error tracking and performance monitoring.
                 </p>
@@ -234,14 +258,23 @@ export default function MonitoringPage() {
                     : "border-amber-200 bg-amber-50 text-amber-700",
                 )}
               >
-                {overview?.integrations.sentry.configured ? "Configured" : "Not configured"}
+                {overview?.integrations.sentry.configured
+                  ? "Configured"
+                  : "Not configured"}
               </span>
             </div>
 
             <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-              <p>Environment: {overview?.integrations.sentry.environment || "unknown"}</p>
-              <p>Release: {overview?.integrations.sentry.release || "not set"}</p>
-              <p>Configured via SENTRY_DSN and SENTRY_AUTH_TOKEN in production.</p>
+              <p>
+                Environment:{" "}
+                {overview?.integrations.sentry.environment || "unknown"}
+              </p>
+              <p>
+                Release: {overview?.integrations.sentry.release || "not set"}
+              </p>
+              <p>
+                Configured via SENTRY_DSN and SENTRY_AUTH_TOKEN in production.
+              </p>
             </div>
           </div>
         </div>
@@ -249,9 +282,13 @@ export default function MonitoringPage() {
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Recent audit activity</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Recent audit activity
+              </h2>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                {lastUpdated ? `Last refreshed ${lastUpdated}` : "Waiting for data"}
+                {lastUpdated
+                  ? `Last refreshed ${lastUpdated}`
+                  : "Waiting for data"}
               </p>
             </div>
 
@@ -265,7 +302,8 @@ export default function MonitoringPage() {
 
           {loading ? (
             <div className="flex items-center gap-2 p-6 text-sm text-gray-600 dark:text-gray-300">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading monitoring data...
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading monitoring
+              data...
             </div>
           ) : overview?.auditLogs.length ? (
             <div className="overflow-x-auto">
@@ -297,7 +335,9 @@ export default function MonitoringPage() {
                       </td>
                       <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
                         <div>{entry.entityType}</div>
-                        <div className="text-xs text-gray-500">{entry.entityId}</div>
+                        <div className="text-xs text-gray-500">
+                          {entry.entityId}
+                        </div>
                       </td>
                       <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
                         {formatDate(entry.createdAt)}
@@ -308,7 +348,9 @@ export default function MonitoringPage() {
               </table>
             </div>
           ) : (
-            <div className="p-6 text-sm text-gray-500">No audit events found.</div>
+            <div className="p-6 text-sm text-gray-500">
+              No audit events found.
+            </div>
           )}
         </div>
 
@@ -316,11 +358,15 @@ export default function MonitoringPage() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-500" />
             <div className="space-y-1">
-              <p className="font-semibold text-gray-900 dark:text-white">What this page covers</p>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                What this page covers
+              </p>
               <p>
-                App health comes from the local health endpoint, audit activity comes from the database,
-                and Sentry shows configuration readiness. Add the Sentry SDK and production environment
-                variables when you want error tracking and release health to light up fully in production.
+                App health comes from the local health endpoint, audit activity
+                comes from the database, and Sentry shows configuration
+                readiness. Add the Sentry SDK and production environment
+                variables when you want error tracking and release health to
+                light up fully in production.
               </p>
             </div>
           </div>

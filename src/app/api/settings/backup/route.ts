@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import { Role } from "@/lib/db-types";
-import { createBackupSnapshot } from "@/lib/backup";
+import { createAndStoreBackupSnapshot } from "@/lib/backup";
 
 function filenameFromTimestamp(timestamp: string) {
   return timestamp.replace(/[:.]/g, "-");
@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const snapshot = await createBackupSnapshot({
+    const { snapshot } = await createAndStoreBackupSnapshot({
+      triggerType: "manual",
       generatedBy: {
         userId: user.id,
         email: user.email,
@@ -43,6 +44,40 @@ export async function GET(request: NextRequest) {
     console.error("Backup export error:", error);
     return NextResponse.json(
       { error: "Failed to generate backup" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const backupSecret = process.env.BACKUP_SCHEDULE_SECRET;
+    if (!backupSecret) {
+      return NextResponse.json(
+        { error: "Backup schedule secret is not configured" },
+        { status: 500 },
+      );
+    }
+
+    const headerSecret = request.headers.get("x-backup-secret");
+    if (headerSecret !== backupSecret) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { snapshot, record } = await createAndStoreBackupSnapshot({
+      triggerType: "scheduled",
+      generatedBy: null,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      backupId: record.id,
+      snapshot,
+    });
+  } catch (error) {
+    console.error("Scheduled backup error:", error);
+    return NextResponse.json(
+      { error: "Failed to create scheduled backup" },
       { status: 500 },
     );
   }
