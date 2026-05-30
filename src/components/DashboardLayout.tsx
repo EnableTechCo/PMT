@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useTeam } from "@/contexts/TeamContext";
 import { SelectMenu } from "@/components/SelectMenu";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
 interface AppNotification {
@@ -56,6 +57,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [mobileWorkspaceOpen, setMobileWorkspaceOpen] = useState(false);
   const [desktopWorkspaceOpen, setDesktopWorkspaceOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const { user, logout } = useAuth();
@@ -162,14 +165,25 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   };
 
-  const handleLogout = async () => {
+  const executeLogout = async () => {
+    setLogoutBusy(true);
     try {
       await logout();
       window.location.replace("/");
     } catch (error) {
       console.error("Logout error:", error);
       window.location.replace("/");
+    } finally {
+      setLogoutBusy(false);
+      setShowLogoutConfirm(false);
     }
+  };
+
+  const requestLogout = () => {
+    setShowUserMenu(false);
+    setShowQuickActions(false);
+    setNotifOpen(false);
+    setShowLogoutConfirm(true);
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -363,7 +377,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </p>
               </div>
               <button
-                onClick={handleLogout}
+                onClick={requestLogout}
                 className="text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                 title="Logout"
               >
@@ -579,7 +593,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <div className="my-1 h-px bg-[var(--border)] dark:bg-gray-700" />
                   <button
                     type="button"
-                    onClick={handleLogout}
+                    onClick={requestLogout}
                     className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
                   >
                     <Power className="h-4 w-4" />
@@ -795,7 +809,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 {/* Logout Button */}
                 <button
                   type="button"
-                  onClick={handleLogout}
+                  onClick={requestLogout}
                   className="rounded-md p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
                   title="Sign out"
                 >
@@ -824,6 +838,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           }}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        title="Sign out"
+        message="Are you sure you want to sign out?"
+        confirmLabel="Sign out"
+        confirmVariant="danger"
+        busy={logoutBusy}
+        onCancel={() => setShowLogoutConfirm(false)}
+        onConfirm={() => {
+          void executeLogout();
+        }}
+      />
     </div>
   );
 }

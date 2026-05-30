@@ -664,8 +664,8 @@ const db = new Proxy(
           const { where, data: updateData } = params;
           let query: SupabaseQuery = supabase
             .from(table)
-            .update(updateData as AnyObject)
-            .match(where || {});
+            .update(updateData as AnyObject);
+          query = applyWhere(query, where as AnyObject, modelName);
           const response = (await query) as QueryResponse;
           const { data, error } = response;
           if (error) {
@@ -677,11 +677,9 @@ const db = new Proxy(
         deleteMany: async (params: AnyObject) => {
           const table = buildTableName(modelName);
           const { where } = params;
-          const response = (await supabase
-            .from(table)
-            .delete()
-            .match(where || {})
-            .select("id")) as QueryResponse;
+          let query: SupabaseQuery = supabase.from(table).delete();
+          query = applyWhere(query, where as AnyObject, modelName);
+          const response = (await query.select("id")) as QueryResponse;
           const { data, error } = response;
           if (error) {
             throw error;
