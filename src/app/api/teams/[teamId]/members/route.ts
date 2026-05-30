@@ -379,6 +379,13 @@ export async function DELETE(
     return NextResponse.json({ error: "userId is required" }, { status: 400 });
   }
 
+  if (userId === sessionUser.id) {
+    return NextResponse.json(
+      { error: "You cannot remove your own account from the team." },
+      { status: 400 },
+    );
+  }
+
   const deleted = await db.teamMembership.deleteMany({
     where: { teamId, userId },
   });
@@ -386,19 +393,31 @@ export async function DELETE(
     return NextResponse.json({ ok: true, removed: false, deletedCount: 0 });
   }
 
-  const remaining = await db.teamMembership.findMany({
-    where: { userId },
-    select: { teamId: true },
-  });
-  const u = await findUserById(userId);
-  const ids = new Set(remaining.map((m: { teamId: string }) => m.teamId));
-  let nextTeamId: string | null = null;
-  if (u?.teamId && ids.has(u.teamId)) {
-    nextTeamId = u.teamId;
-  } else {
-    nextTeamId = remaining[0]?.teamId ?? null;
+  // Removing a team member should also remove their account and invite tokens.
+  await db.teamMembership.deleteMany({ where: { userId } });
+  await db.passwordReset.deleteMany({ where: { userId } });
+
+  const existingUser = await findUserById(userId);
+  if (!existingUser) {
+    return NextResponse.json({ ok: true, removed: true, deletedUser: false });
   }
-  await updateUser(userId, { teamId: nextTeamId });
+
+  try {
+    await db.user.delete({ where: { id: userId } });
+  } catch (error) {
+    console.error("TEAM_MEMBER_REMOVE user delete failed", {
+      teamId,
+      userId,
+      error,
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Team membership was removed, but user account could not be deleted because it is linked to other records.",
+      },
+      { status: 409 },
+    );
+  }
 
   await writeAuditLog({
     actorId: sessionUser.id,
@@ -411,6 +430,7 @@ export async function DELETE(
   return NextResponse.json({
     ok: true,
     removed: true,
+    deletedUser: true,
     deletedCount: deleted.count,
   });
 }
