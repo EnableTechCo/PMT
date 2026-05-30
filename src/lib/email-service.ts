@@ -71,12 +71,21 @@ function getEmailProvider(): EmailProvider {
 
 function getFromEmail() {
   if (getEmailProvider() === "resend") {
-    return (
-      process.env.RESEND_FROM_EMAIL ||
-      process.env.SMTP_FROM_EMAIL ||
-      process.env.SMTP_USER ||
-      "dev@e-t.co.za"
-    );
+    const fromEmail = process.env.RESEND_FROM_EMAIL?.trim();
+    if (!fromEmail) {
+      throw new Error("Resend is selected but RESEND_FROM_EMAIL is not set.");
+    }
+
+    if (
+      process.env.NODE_ENV === "production" &&
+      fromEmail.toLowerCase().endsWith("@resend.dev")
+    ) {
+      throw new Error(
+        "RESEND_FROM_EMAIL cannot use @resend.dev in production. Use an address from your verified domain.",
+      );
+    }
+
+    return fromEmail;
   }
 
   return (
@@ -137,8 +146,8 @@ export async function getEmailDiagnostics(): Promise<Diagnostics> {
     const missing: string[] = [];
 
     if (!process.env.RESEND_API_KEY) missing.push("RESEND_API_KEY");
-    if (!process.env.RESEND_FROM_EMAIL && !process.env.SMTP_FROM_EMAIL) {
-      missing.push("RESEND_FROM_EMAIL (or SMTP_FROM_EMAIL)");
+    if (!process.env.RESEND_FROM_EMAIL) {
+      missing.push("RESEND_FROM_EMAIL");
     }
 
     return {
