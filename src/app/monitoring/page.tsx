@@ -50,12 +50,6 @@ type MonitoringOverview = {
       environment: string | null;
       release: string | null;
     };
-    datadog: {
-      configured: boolean;
-      site: string;
-      rumConfigured: boolean;
-      logsConfigured: boolean;
-    };
   };
 };
 
@@ -224,7 +218,7 @@ export default function MonitoringPage() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900 lg:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Sentry</h2>
@@ -247,33 +241,7 @@ export default function MonitoringPage() {
             <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
               <p>Environment: {overview?.integrations.sentry.environment || "unknown"}</p>
               <p>Release: {overview?.integrations.sentry.release || "not set"}</p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Datadog</h2>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  Infrastructure, logs, and RUM observability.
-                </p>
-              </div>
-              <span
-                className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-semibold",
-                  overview?.integrations.datadog.configured
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-amber-200 bg-amber-50 text-amber-700",
-                )}
-              >
-                {overview?.integrations.datadog.configured ? "Configured" : "Not configured"}
-              </span>
-            </div>
-
-            <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-              <p>Site: {overview?.integrations.datadog.site || "app.datadoghq.com"}</p>
-              <p>Logs: {overview?.integrations.datadog.logsConfigured ? "Enabled" : "Not enabled"}</p>
-              <p>RUM: {overview?.integrations.datadog.rumConfigured ? "Enabled" : "Not enabled"}</p>
+              <p>Configured via SENTRY_DSN and SENTRY_AUTH_TOKEN in production.</p>
             </div>
           </div>
         </div>
@@ -351,8 +319,8 @@ export default function MonitoringPage() {
               <p className="font-semibold text-gray-900 dark:text-white">What this page covers</p>
               <p>
                 App health comes from the local health endpoint, audit activity comes from the database,
-                and Sentry/Datadog show configuration readiness. Add the actual vendor SDKs or env vars when
-                you want these cards to light up fully in production.
+                and Sentry shows configuration readiness. Add the Sentry SDK and production environment
+                variables when you want error tracking and release health to light up fully in production.
               </p>
             </div>
           </div>

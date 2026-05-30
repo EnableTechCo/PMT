@@ -17,6 +17,8 @@ import {
   Trash2,
   ExternalLink,
   Lock,
+  Database,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +52,8 @@ function SettingsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"profile" | "github" | "security">(
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const [activeTab, setActiveTab] = useState<"profile" | "github" | "security" | "backup">(
     "github",
   );
 
@@ -71,6 +74,10 @@ function SettingsPageContent() {
   const [diagnosticMessage, setDiagnosticMessage] = useState("");
   const [diagnosticError, setDiagnosticError] = useState("");
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupMessage, setBackupMessage] = useState("");
+  const [backupError, setBackupError] = useState("");
+  const [backupSummary, setBackupSummary] = useState<Record<string, number> | null>(null);
 
   // User Profile display state (dummy/read-only for beauty)
   const [name, setName] = useState("");
@@ -269,6 +276,20 @@ function SettingsPageContent() {
               <Shield className="w-4 h-4" />
               Security
             </button>
+            {isSuperAdmin ? (
+              <button
+                onClick={() => setActiveTab("backup")}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                  activeTab === "backup"
+                    ? "bg-brand-600/[0.12] text-brand-800 ring-1 ring-brand-500/20 dark:bg-brand-600/15 dark:text-brand-200"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5",
+                )}
+              >
+                <Database className="w-4 h-4" />
+                Backup
+              </button>
+            ) : null}
           </div>
 
           {/* Settings Panels */}
@@ -622,6 +643,99 @@ function SettingsPageContent() {
                 </div>
               </div>
             )}
+            {activeTab === "backup" && isSuperAdmin ? (
+              <div className="bg-white dark:bg-[#1c1c24] border border-gray-200 dark:border-gray-800 p-6 rounded-2xl shadow-card space-y-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                      Backup & Restore
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                      Export a point-in-time JSON backup of the app database.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void downloadBackup();
+                    }}
+                    disabled={backupLoading}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {backupLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Creating backup...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4" />
+                        Download backup
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
+                  This exports the current database snapshot as JSON. Keep the file private,
+                  because it includes application data and credentials stored in the database.
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-slate-50/50 dark:bg-slate-900/20 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                      How it works
+                    </p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                      The server reads every core table directly from the database and returns a
+                      downloadable JSON file with timestamps, counts, and row data.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-slate-50/50 dark:bg-slate-900/20 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                      Backup contents
+                    </p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                      Teams, users, clients, projects, tickets, audit logs, documents,
+                      automations, GitHub links, notifications, settings, and recovery tokens.
+                    </p>
+                  </div>
+                </div>
+
+                {backupSummary ? (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13131a] p-4">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Last backup snapshot counts
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+                      {Object.entries(backupSummary).map(([key, value]) => (
+                        <div
+                          key={key}
+                          className="rounded-lg border border-gray-200 dark:border-gray-800 p-3"
+                        >
+                          <p className="text-xs uppercase tracking-wider text-gray-500">{key}</p>
+                          <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
+                            {value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {backupMessage ? (
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                    {backupMessage}
+                  </p>
+                ) : null}
+
+                {backupError ? (
+                  <p className="text-sm text-red-600 dark:text-red-300">{backupError}</p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -720,5 +834,47 @@ function SettingsPageContent() {
     setConnectError("");
     setSuccessMsg("");
     window.location.href = "/api/github/oauth/start";
+  }
+
+  async function downloadBackup() {
+    setBackupLoading(true);
+    setBackupMessage("");
+    setBackupError("");
+
+    try {
+      const res = await fetch("/api/settings/backup?download=1", {
+        method: "GET",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string" ? body.error : "Failed to create backup",
+        );
+      }
+
+      const blob = new Blob([JSON.stringify(body, null, 2)], {
+        type: "application/json",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `pmt-backup-${String(body.generatedAt || new Date().toISOString()).replace(/[:.]/g, "-")}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setBackupSummary(body.tableCounts ?? null);
+      setBackupMessage(
+        "Backup created and downloaded successfully. Store it in a secure location.",
+      );
+    } catch (error) {
+      setBackupError(
+        error instanceof Error ? error.message : "Failed to create backup",
+      );
+    } finally {
+      setBackupLoading(false);
+    }
   }
 }

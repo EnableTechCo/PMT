@@ -54,24 +54,6 @@ export async function GET(request: NextRequest) {
           environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV,
           release: process.env.SENTRY_RELEASE || null,
         },
-        datadog: {
-          configured: isConfigured(
-            process.env.DATADOG_API_KEY,
-            process.env.DD_API_KEY,
-            process.env.NEXT_PUBLIC_DATADOG_RUM_APPLICATION_ID,
-            process.env.NEXT_PUBLIC_DATADOG_CLIENT_TOKEN,
-          ),
-          site:
-            process.env.DATADOG_SITE || process.env.NEXT_PUBLIC_DATADOG_SITE || "app.datadoghq.com",
-          rumConfigured: isConfigured(
-            process.env.NEXT_PUBLIC_DATADOG_RUM_APPLICATION_ID,
-            process.env.NEXT_PUBLIC_DATADOG_CLIENT_TOKEN,
-          ),
-          logsConfigured: isConfigured(
-            process.env.DATADOG_API_KEY,
-            process.env.DD_API_KEY,
-          ),
-        },
       },
     });
   } catch (error) {
