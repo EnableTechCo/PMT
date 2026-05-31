@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data } = await octokit.rest.users.getAuthenticated();
       githubUser = data;
-    } catch (e: any) {
+    } catch (_e: any) {
       return NextResponse.json(
         { error: "Invalid GitHub token. Please ensure it has the repo scope." },
         { status: 401 },
@@ -65,7 +65,7 @@ export async function DELETE(request: NextRequest) {
     await updateUserGithubToken(sessionUser.id, null);
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -95,14 +95,14 @@ export async function GET(request: NextRequest) {
           avatarUrl: data.avatar_url,
         },
       });
-    } catch (e) {
+    } catch (_e) {
       if (github.auth.source === "user") {
         await updateUserGithubToken(sessionUser.id, null);
       }
 
       return NextResponse.json({ connected: false });
     }
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

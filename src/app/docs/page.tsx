@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
-import { FileText, Plus, Search, Clock, User, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { FileText, Plus, Clock, User, X } from "lucide-react";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
 interface Document {
@@ -21,7 +19,6 @@ interface Document {
 
 export default function DocsPage() {
   const router = useRouter();
-  const { user } = useAuth();
   const { activeTeamId, isAllTeams } = useTeam();
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,20 +28,7 @@ export default function DocsPage() {
   const [createDocError, setCreateDocError] = useState("");
   const [creatingDoc, setCreatingDoc] = useState(false);
 
-  useEffect(() => {
-    fetchDocs();
-  }, [activeTeamId, isAllTeams]);
-
-  useEffect(() => {
-    const unsubscribe = onRealtimeChange((detail) => {
-      if (detail.table !== "Document") return;
-      void fetchDocs();
-    });
-
-    return unsubscribe;
-  }, [activeTeamId, isAllTeams]);
-
-  const fetchDocs = async () => {
+  const fetchDocs = useCallback(async () => {
     try {
       setLoading(true);
       const url =
@@ -60,7 +44,20 @@ export default function DocsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTeamId, isAllTeams]);
+
+  useEffect(() => {
+    void fetchDocs();
+  }, [fetchDocs]);
+
+  useEffect(() => {
+    const unsubscribe = onRealtimeChange((detail) => {
+      if (detail.table !== "Document") return;
+      void fetchDocs();
+    });
+
+    return unsubscribe;
+  }, [fetchDocs]);
 
   const createDoc = async () => {
     const title = newDocTitle.trim();

@@ -1,7 +1,8 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -63,7 +64,6 @@ export default function SettingsPage() {
 }
 
 function SettingsPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
@@ -78,7 +78,7 @@ function SettingsPageContent() {
   const [githubSource, setGithubSource] =
     useState<GithubConnectionSource | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(true);
-  const [statusError, setStatusError] = useState("");
+  const [statusError] = useState("");
   const [connectError, setConnectError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [testEmailLoading, setTestEmailLoading] = useState(false);
@@ -434,9 +434,13 @@ function SettingsPageContent() {
                   <div className="border border-gray-200 dark:border-gray-800 rounded-xl p-6 bg-slate-50/50 dark:bg-slate-900/20 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                     <div className="flex items-center gap-4">
                       {githubUser.avatarUrl ? (
-                        <img
+                        <Image
                           src={githubUser.avatarUrl}
                           alt={githubUser.login}
+                          width={56}
+                          height={56}
+                          unoptimized
+                          loader={({ src }) => src}
                           className="w-14 h-14 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm"
                         />
                       ) : (
@@ -979,7 +983,7 @@ function SettingsPageContent() {
       } else {
         setConnectError("Failed to disconnect from GitHub.");
       }
-    } catch (e: any) {
+    } catch (_e: any) {
       setConnectError("An error occurred during disconnection.");
     } finally {
       setConnecting(false);

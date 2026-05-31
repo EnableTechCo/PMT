@@ -252,25 +252,28 @@ export default function WorkloadPage() {
     dueDate?: string;
   };
 
-  const handleCreateTicket = async (ticketData: CreateTicketPayload) => {
-    try {
-      const response = await fetch("/api/tickets", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(ticketData),
-      });
+  const handleCreateTicket = useCallback(
+    async (ticketData: CreateTicketPayload) => {
+      try {
+        const response = await fetch("/api/tickets", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(ticketData),
+        });
 
-      if (!response.ok) {
-        throw new Error("Failed to create ticket");
+        if (!response.ok) {
+          throw new Error("Failed to create ticket");
+        }
+
+        await fetchTickets();
+      } catch (error) {
+        console.error(error);
       }
-
-      await fetchTickets();
-    } catch (error) {
-      console.error(error);
-    }
-  };
+    },
+    [fetchTickets],
+  );
 
   useEffect(() => {
     const onModalSubmit = (event: Event) => {

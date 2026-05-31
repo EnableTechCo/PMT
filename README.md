@@ -187,9 +187,10 @@ pnpm docker:run
 
 ## Testing & Quality Assurance
 
-- **Linting**: `pnpm run lint`
-- **Type Checking**: `pnpm run type-check`
-- **Unit Tests**: `pnpm run test`
+- **Linting**: `pnpm lint`
+- **Type Checking**: `pnpm type-check`
+- **Unit Tests**: `pnpm test`
+- **Auditing**:`pnpm audit`
 
 ---
 
@@ -202,4 +203,5 @@ pnpm docker:run
 ---
 
 **Internal Tooling - Managed by Engineering**
+
 # PMT

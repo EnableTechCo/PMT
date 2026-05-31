@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -31,11 +31,7 @@ export default function DocEditorPage({
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  useEffect(() => {
-    fetchDoc();
-  }, [id]);
-
-  const fetchDoc = async () => {
+  const fetchDoc = useCallback(async () => {
     try {
       const res = await fetch(`/api/docs/${id}`);
       if (res.ok) {
@@ -49,7 +45,11 @@ export default function DocEditorPage({
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [id, router]);
+
+  useEffect(() => {
+    void fetchDoc();
+  }, [fetchDoc]);
 
   const handleSave = async () => {
     setSaving(true);

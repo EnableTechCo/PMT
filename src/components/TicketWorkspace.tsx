@@ -67,9 +67,9 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const [uploadBusy, setUploadBusy] = useState(false);
 
   // GitHub integration states
-  const [checkingGithub, setCheckingGithub] = useState(true);
+  const [_checkingGithub, setCheckingGithub] = useState(true);
   const [githubConnected, setGithubConnected] = useState(false);
-  const [githubUser, setGithubUser] = useState<{
+  const [_githubUser, setGithubUser] = useState<{
     login: string;
     avatarUrl: string;
   } | null>(null);

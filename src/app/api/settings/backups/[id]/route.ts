@@ -14,7 +14,7 @@ function toFilename(timestamp: string) {
 
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const user = await getUserFromRequest(request);
@@ -26,7 +26,7 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { id } = context.params;
+    const { id } = await context.params;
     const record = await loadBackupRecordById(id);
 
     if (!record) {
@@ -56,7 +56,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  context: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const user = await getUserFromRequest(request);
@@ -68,7 +68,7 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { id } = context.params;
+    const { id } = await context.params;
     const record = await loadBackupRecordById(id);
 
     if (!record) {

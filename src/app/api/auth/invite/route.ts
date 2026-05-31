@@ -1,5 +1,4 @@
 import { db } from "@/lib/db";
-import { hashPassword } from "@/lib/auth";
 import { sendAdminInviteEmail } from "@/lib/email-service";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";

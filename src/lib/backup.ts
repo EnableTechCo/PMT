@@ -72,34 +72,6 @@ type BackupMeta = {
 
 const BACKUP_SELECTION: BackupSelection = { orderBy: { createdAt: "asc" } };
 
-const BACKUP_DELETE_ORDER: Array<keyof typeof deleteTargets> = [];
-
-const deleteTargets = {
-  inviteTokens: db.inviteToken,
-  passwordResets: db.passwordReset,
-  savedViews: db.savedView,
-  notifications: db.notification,
-  githubRepos: db.githubRepo,
-  githubPullRequests: db.githubPullRequest,
-  githubBranches: db.githubBranch,
-  automationRules: db.automationRule,
-  documents: db.document,
-  auditLogs: db.auditLog,
-  ticketActivities: db.ticketActivity,
-  ticketChecklistItems: db.ticketChecklistItem,
-  ticketAttachments: db.ticketAttachment,
-  ticketComments: db.ticketComment,
-  tickets: db.ticket,
-  milestones: db.milestone,
-  projects: db.project,
-  portfolios: db.portfolio,
-  teamMemberships: db.teamMembership,
-  users: db.user,
-  clients: db.client,
-  teams: db.team,
-  organizationSettings: db.organizationSettings,
-} as const;
-
 const createTargets = {
   teams: db.team,
   users: db.user,
@@ -141,6 +113,16 @@ function labelForBackup(triggerType: string, generatedAt: string) {
 
 function sanitizeRow<T extends Record<string, unknown>>(row: T): T {
   return JSON.parse(JSON.stringify(row)) as T;
+}
+
+function emptyBackupTables(): Record<BackupTableName, unknown[]> {
+  return BACKUP_TABLE_NAMES.reduce(
+    (tables, tableName) => {
+      tables[tableName] = [];
+      return tables;
+    },
+    {} as Record<BackupTableName, unknown[]>,
+  );
 }
 
 export async function createBackupSnapshot(
@@ -343,9 +325,7 @@ export async function listBackupRecords(take = 20): Promise<BackupRecord[]> {
         passwordResets: 0,
         inviteTokens: 0,
       },
-      tables: Object.fromEntries(
-        BACKUP_TABLE_NAMES.map((name) => [name, []]),
-      ) as Record<BackupTableName, unknown[]>,
+      tables: emptyBackupTables(),
     }),
     createdAt: row.createdAt,
   }));
@@ -428,9 +408,7 @@ export async function loadBackupRecordById(
         passwordResets: 0,
         inviteTokens: 0,
       },
-      tables: Object.fromEntries(
-        BACKUP_TABLE_NAMES.map((name) => [name, []]),
-      ) as Record<BackupTableName, unknown[]>,
+      tables: emptyBackupTables(),
     }),
     createdAt: row.createdAt,
   };

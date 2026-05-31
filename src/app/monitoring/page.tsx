@@ -7,7 +7,6 @@ import {
   Activity,
   AlertTriangle,
   Database,
-  ExternalLink,
   Loader2,
   RefreshCcw,
   ShieldCheck,

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/contexts/TeamContext";
 
@@ -13,7 +12,6 @@ const inviteRoleOptions = [
 
 export default function AdminInvitePage() {
   const { user } = useAuth();
-  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] =
@@ -57,7 +55,7 @@ export default function AdminInvitePage() {
         setRole("USER");
         setTeamId("");
       }
-    } catch (err) {
+    } catch (_err) {
       setError("Network error");
     } finally {
       setLoading(false);

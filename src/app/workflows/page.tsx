@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, Play, RotateCcw, Square, ExternalLink, Workflow } from "lucide-react";
+import {
+  Loader2,
+  Play,
+  RotateCcw,
+  Square,
+  ExternalLink,
+  Workflow,
+} from "lucide-react";
 
 type GithubRepo = {
   id: number;
@@ -46,8 +53,11 @@ export default function WorkflowsPage() {
 
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [loadingWorkflows, setLoadingWorkflows] = useState(false);
-  const [runningWorkflowId, setRunningWorkflowId] = useState<number | null>(null);
+  const [runningWorkflowId, setRunningWorkflowId] = useState<number | null>(
+    null,
+  );
   const [actingRunId, setActingRunId] = useState<number | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string>("");
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -68,12 +78,21 @@ export default function WorkflowsPage() {
     return map;
   }, [runs]);
 
+  const workflowNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const wf of workflows) {
+      map.set(wf.id, wf.name);
+    }
+    return map;
+  }, [workflows]);
+
   const selectedRepo = useMemo(
-    () => repos.find((r) => r.name === repo && r.owner?.login === owner) ?? null,
+    () =>
+      repos.find((r) => r.name === repo && r.owner?.login === owner) ?? null,
     [repos, owner, repo],
   );
 
-  const loadRepos = async () => {
+  const loadRepos = useCallback(async () => {
     setLoadingRepos(true);
     setError("");
     try {
@@ -93,13 +112,15 @@ export default function WorkflowsPage() {
         setRef(first.default_branch || "main");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch repositories");
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch repositories",
+      );
     } finally {
       setLoadingRepos(false);
     }
-  };
+  }, []);
 
-  const loadWorkflows = async () => {
+  const loadWorkflows = useCallback(async () => {
     if (!owner || !repo) return;
 
     setLoadingWorkflows(true);
@@ -118,22 +139,34 @@ export default function WorkflowsPage() {
 
       setWorkflows(Array.isArray(body.workflows) ? body.workflows : []);
       setRuns(Array.isArray(body.runs) ? body.runs : []);
+      setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch workflows");
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch workflows",
+      );
     } finally {
       setLoadingWorkflows(false);
     }
-  };
+  }, [owner, repo]);
 
   useEffect(() => {
     if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
     void loadRepos();
-  }, [authLoading, user]);
+  }, [authLoading, user, loadRepos]);
 
   useEffect(() => {
     if (!owner || !repo) return;
     void loadWorkflows();
-  }, [owner, repo]);
+  }, [owner, repo, loadWorkflows]);
+
+  useEffect(() => {
+    if (!owner || !repo) return;
+    const interval = setInterval(() => {
+      void loadWorkflows();
+    }, 20000);
+
+    return () => clearInterval(interval);
+  }, [owner, repo, loadWorkflows]);
 
   const runWorkflow = async (workflowId: number) => {
     setRunningWorkflowId(workflowId);
@@ -152,7 +185,9 @@ export default function WorkflowsPage() {
       setMessage("Workflow dispatched successfully.");
       await loadWorkflows();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to dispatch workflow");
+      setError(
+        err instanceof Error ? err.message : "Failed to dispatch workflow",
+      );
     } finally {
       setRunningWorkflowId(null);
     }
@@ -173,7 +208,9 @@ export default function WorkflowsPage() {
         throw new Error(body.error || `Failed to ${action} run`);
       }
       setMessage(
-        action === "rerun" ? "Run re-queued successfully." : "Run cancelled successfully.",
+        action === "rerun"
+          ? "Run re-queued successfully."
+          : "Run cancelled successfully.",
       );
       await loadWorkflows();
     } catch (err) {
@@ -209,13 +246,16 @@ export default function WorkflowsPage() {
             <Workflow className="h-7 w-7 text-indigo-500" /> GitHub Workflows
           </h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Super admin control panel to dispatch, rerun, and cancel GitHub Actions workflows.
+            Super admin control panel to dispatch, rerun, and cancel GitHub
+            Actions workflows.
           </p>
         </div>
 
         <div className="grid gap-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 md:grid-cols-4">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Repository</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Repository
+            </label>
             <select
               value={`${owner}/${repo}`}
               onChange={(e) => {
@@ -231,7 +271,10 @@ export default function WorkflowsPage() {
               disabled={loadingRepos || repos.length === 0}
             >
               {repos.map((r) => (
-                <option key={`${r.owner?.login}/${r.name}`} value={`${r.owner?.login}/${r.name}`}>
+                <option
+                  key={`${r.owner?.login}/${r.name}`}
+                  value={`${r.owner?.login}/${r.name}`}
+                >
                   {r.full_name}
                 </option>
               ))}
@@ -239,7 +282,9 @@ export default function WorkflowsPage() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owner</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Owner
+            </label>
             <input
               value={owner}
               onChange={(e) => setOwner(e.target.value.trim())}
@@ -249,7 +294,9 @@ export default function WorkflowsPage() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Repo</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Repo
+            </label>
             <input
               value={repo}
               onChange={(e) => setRepo(e.target.value.trim())}
@@ -259,7 +306,9 @@ export default function WorkflowsPage() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ref</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Ref
+            </label>
             <input
               value={ref}
               onChange={(e) => setRef(e.target.value.trim())}
@@ -315,7 +364,13 @@ export default function WorkflowsPage() {
 
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
           <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Workflows</h2>
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              Workflows
+            </h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Auto-refreshes every 20s
+              {lastUpdated ? ` • Last updated ${lastUpdated}` : ""}
+            </p>
           </div>
 
           {loadingWorkflows ? (
@@ -323,7 +378,9 @@ export default function WorkflowsPage() {
               <Loader2 className="h-4 w-4 animate-spin" /> Loading workflows...
             </div>
           ) : workflows.length === 0 ? (
-            <div className="p-6 text-sm text-gray-500">No workflows found for this repository.</div>
+            <div className="p-6 text-sm text-gray-500">
+              No workflows found for this repository.
+            </div>
           ) : (
             <ul className="divide-y divide-gray-200 dark:divide-gray-700">
               {workflows.map((wf) => {
@@ -332,9 +389,13 @@ export default function WorkflowsPage() {
                   <li key={wf.id} className="p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-white">{wf.name}</p>
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {wf.name}
+                        </p>
                         <p className="text-xs text-gray-500">{wf.path}</p>
-                        <p className="mt-1 text-xs text-gray-500">State: {wf.state}</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          State: {wf.state}
+                        </p>
                       </div>
 
                       <button
@@ -380,7 +441,8 @@ export default function WorkflowsPage() {
                             <RotateCcw className="h-3 w-3" /> Rerun
                           </button>
 
-                          {(latest.status === "queued" || latest.status === "in_progress") && (
+                          {(latest.status === "queued" ||
+                            latest.status === "in_progress") && (
                             <button
                               type="button"
                               onClick={() => {
@@ -399,6 +461,112 @@ export default function WorkflowsPage() {
                 );
               })}
             </ul>
+          )}
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              Recent Runs
+            </h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Latest executed workflows in this repository.
+            </p>
+          </div>
+
+          {runs.length === 0 ? (
+            <div className="p-6 text-sm text-gray-500">
+              No workflow runs yet for this repository.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800/40">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
+                      Workflow
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
+                      Run
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
+                      Branch
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
+                      Conclusion
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
+                      Started
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {runs.map((run) => (
+                    <tr key={run.id}>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white">
+                        {workflowNameById.get(run.workflow_id) || run.name}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        #{run.run_number}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {run.head_branch || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {run.status}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {run.conclusion || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {new Date(run.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <a
+                            href={run.html_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                          >
+                            Open <ExternalLink className="h-3 w-3" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void actOnRun(run.id, "rerun");
+                            }}
+                            disabled={actingRunId === run.id}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                          >
+                            <RotateCcw className="h-3 w-3" /> Rerun
+                          </button>
+                          {(run.status === "queued" ||
+                            run.status === "in_progress") && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void actOnRun(run.id, "cancel");
+                              }}
+                              disabled={actingRunId === run.id}
+                              className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-950/40"
+                            >
+                              <Square className="h-3 w-3" /> Cancel
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>

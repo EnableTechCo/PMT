@@ -47,13 +47,6 @@ function isPlainObject(value: unknown): value is AnyObject {
   );
 }
 
-function encodeFilterValue(value: unknown) {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  return encodeURIComponent(String(value));
-}
-
 function normalizeFilterValue(value: unknown): unknown {
   if (value instanceof Date) {
     return value.toISOString();
@@ -130,7 +123,7 @@ function deleteValueAtPath(target: AnyObject, path: string[]) {
   delete current[path[path.length - 1]];
 }
 
-async function resolveSomeRelationIds(
+async function _resolveSomeRelationIds(
   model: string,
   relation: string,
   condition: AnyObject,
@@ -248,7 +241,7 @@ function applyDirectFilters(
 function applyWhere(
   query: any,
   where: AnyObject | undefined,
-  modelName: string,
+  _modelName: string,
 ) {
   if (!where || Object.keys(where).length === 0) {
     return query;
@@ -397,7 +390,6 @@ function sortArrayByOrder(array: unknown[], orderBy: AnyObject) {
 function applyPostProcessing(result: AnyObject, metadata: SelectionMeta[]) {
   for (const meta of metadata) {
     if (meta.countOnly && Array.isArray(meta.countRelations)) {
-      const countValues: AnyObject = {};
       for (const relation of meta.countRelations) {
         const relationRow = getValueAtPath(result, [...meta.path, relation]);
         const count = Array.isArray(relationRow) ? relationRow.length : 0;
