@@ -63,7 +63,7 @@ jobs:
 
       - name: Unit tests
         if: inputs.action == 'test'
-        run: pnpm run test -- --ci --passWithNoTests
+        run: pnpm run test:ci
 
       - name: E2E tests
         if: inputs.action == 'e2e'

@@ -154,7 +154,7 @@ jobs:
         shell: bash
         run: |
           if [ -f jest.config.js ] || [ -f jest.config.ts ] || [ -f jest.config.mjs ] || [ -d __tests__ ] || [ -d tests ]; then
-            pnpm run test -- --ci --passWithNoTests
+            pnpm run test:ci
           else
             echo "No Jest config/tests found. Skipping unit tests."
           fi
