@@ -3,7 +3,7 @@
 import { NextRequest } from "next/server";
 import { hashPassword } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { createUser } from "@/lib/user-store";
+import { createUser, findUserByEmail } from "@/lib/user-store";
 import * as routeModule from "@/app/api/auth/invite/accept/route";
 
 jest.mock("@/lib/db", () => ({
@@ -21,6 +21,7 @@ jest.mock("@/lib/auth", () => ({
 
 jest.mock("@/lib/user-store", () => ({
   createUser: jest.fn(),
+  findUserByEmail: jest.fn(),
 }));
 
 const params = {};
@@ -47,6 +48,7 @@ describe("src/app/api/auth/invite/accept/route.ts", () => {
       used: false,
       expiresAt: new Date(Date.now() + 60_000),
     });
+    (findUserByEmail as jest.Mock).mockResolvedValue(null);
     (hashPassword as jest.Mock).mockResolvedValue("hashed-password");
     (createUser as jest.Mock).mockResolvedValue({
       id: "user-test",

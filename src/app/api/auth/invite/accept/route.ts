@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { createUser } from "@/lib/user-store";
+import { createUser, findUserByEmail } from "@/lib/user-store";
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,16 +40,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const existingUser = await findUserByEmail(invite.email);
+    if (existingUser) {
+      return NextResponse.json(
+        {
+          error:
+            "An account already exists for this invitation email. Please sign in instead.",
+        },
+        { status: 409 },
+      );
+    }
+
     // Hash password
     const hashedPassword = await hashPassword(password);
 
     // Create user
-    const newUser = await createUser({
-      email: invite.email,
-      name: name || invite.email.split("@")[0],
-      password: hashedPassword,
-      role: invite.role,
-    });
+    let newUser;
+    try {
+      newUser = await createUser({
+        email: invite.email,
+        name: name || invite.email.split("@")[0],
+        password: hashedPassword,
+        role: invite.role,
+      });
+    } catch (createError) {
+      const message =
+        createError instanceof Error
+          ? createError.message
+          : String(createError);
+      if (/unique|duplicate|already exists/i.test(message)) {
+        return NextResponse.json(
+          {
+            error:
+              "An account already exists for this invitation email. Please sign in instead.",
+          },
+          { status: 409 },
+        );
+      }
+      throw createError;
+    }
 
     // Mark invite as used
     await db.inviteToken.update({
