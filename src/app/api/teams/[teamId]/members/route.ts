@@ -282,7 +282,7 @@ export async function POST(
 
   try {
     const appBaseUrl = resolveAppBaseUrl(request.url);
-    const loginLink = `${appBaseUrl}/auth/login?email=${encodeURIComponent(target.email)}&inviteToken=${encodeURIComponent(inviteToken)}`;
+    const loginLink = `/auth/login?email=${encodeURIComponent(target.email)}&inviteToken=`;
     console.log("[Team Add] sending invite email", {
       teamId,
       teamName: team.name,

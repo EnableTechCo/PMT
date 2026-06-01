@@ -71,7 +71,7 @@ export async function POST(
 
     try {
       const appBaseUrl = resolveAppBaseUrl(request.url);
-      const loginLink = `${appBaseUrl}/auth/login?email=${encodeURIComponent(member.email)}&inviteToken=${encodeURIComponent(token)}`;
+      const loginLink = `/auth/login?email=${encodeURIComponent(member.email)}&inviteToken=`;
       await sendAdminInviteEmail(
         member.email,
         token,
