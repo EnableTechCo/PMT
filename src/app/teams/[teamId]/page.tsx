@@ -357,7 +357,7 @@ export default function TeamDetailPage() {
                 className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Ignatius Surname"
+                placeholder="Full name"
               />
             </div>
 
@@ -398,7 +398,7 @@ export default function TeamDetailPage() {
             <button
               type="submit"
               disabled={busy || !email.trim()}
-              className="rounded-lg bg-indigo-600 px-5 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="rounded-lg bg-brand-600 px-5 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
             >
               {busy ? "Adding…" : "Add to team"}
             </button>
@@ -544,7 +544,7 @@ export default function TeamDetailPage() {
                             void saveMemberProfile(m);
                           }}
                           disabled={savingMember || !editMember.name.trim()}
-                          className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                          className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
                         >
                           <Save className="h-4 w-4" />
                           {savingMember ? "Saving..." : "Save"}

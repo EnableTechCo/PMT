@@ -105,7 +105,7 @@ export default function TeamsAdminPage() {
           <button
             type="submit"
             disabled={busy || !name.trim()}
-            className="rounded-lg bg-indigo-600 px-5 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="rounded-lg bg-brand-600 px-5 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
           >
             {busy ? "Saving…" : "Add team"}
           </button>

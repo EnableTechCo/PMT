@@ -60,6 +60,14 @@ interface Ticket {
   } | null;
 }
 
+interface AssignableUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+const EXCLUDED_ASSIGNEE_EMAILS = new Set<string>(["dev@e-t.co.za"]);
+
 type ImportRowResult = {
   index: number;
   title: string;
@@ -102,7 +110,7 @@ const statusConfig = {
     icon: Zap,
   },
   REVISIONS: {
-    label: "Review",
+    label: "REVIEW",
     color:
       "bg-yellow-100 text-yellow-900 border border-yellow-400 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30",
     icon: AlertCircle,
@@ -181,6 +189,68 @@ export default function TicketsPage() {
   const pageSize = 9;
 
   const [priorityFilter, setPriorityFilter] = useState<string>("");
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+
+  const fetchAssignableUsers = useCallback(async () => {
+    if (!user || user.role === "CLIENT") {
+      setAssignableUsers([]);
+      return;
+    }
+
+    try {
+      if (user.role === "SUPER_ADMIN") {
+        const response = await fetch("/api/workload/users");
+        if (!response.ok) {
+          setAssignableUsers([]);
+          return;
+        }
+        const data = (await response.json()) as AssignableUser[];
+        const users = Array.isArray(data) ? data : [];
+        setAssignableUsers(
+          users.filter(
+            (candidate) =>
+              !EXCLUDED_ASSIGNEE_EMAILS.has(
+                candidate.email.trim().toLowerCase(),
+              ),
+          ),
+        );
+        return;
+      }
+
+      if (!activeTeamId) {
+        setAssignableUsers([]);
+        return;
+      }
+
+      const response = await fetch(`/api/teams/${activeTeamId}/members`);
+      if (!response.ok) {
+        setAssignableUsers([]);
+        return;
+      }
+
+      const body = (await response.json()) as {
+        members?: Array<{ userId: string; name: string; email: string }>;
+      };
+      const members = Array.isArray(body.members) ? body.members : [];
+
+      setAssignableUsers(
+        members
+          .map((member) => ({
+            id: member.userId,
+            name: member.name,
+            email: member.email,
+          }))
+          .filter(
+            (candidate) =>
+              !EXCLUDED_ASSIGNEE_EMAILS.has(
+                candidate.email.trim().toLowerCase(),
+              ),
+          ),
+      );
+    } catch {
+      setAssignableUsers([]);
+    }
+  }, [user, activeTeamId]);
 
   const fetchTickets = useCallback(async () => {
     if (!user) return;
@@ -268,6 +338,34 @@ export default function TicketsPage() {
       fetchTickets();
     } catch {}
   };
+
+  const handleAssigneeChange = async (
+    ticketId: string,
+    nextAssigneeId: string,
+  ) => {
+    try {
+      const assigneeId =
+        nextAssigneeId === "__unassigned__" ? null : nextAssigneeId;
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ assigneeId }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update assignee");
+      }
+
+      fetchTickets();
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!user || user.role === "CLIENT") return;
+    void fetchAssignableUsers();
+  }, [user, activeTeamId, isAllTeams, fetchAssignableUsers]);
 
   type CreateTicketPayload = {
     title: string;
@@ -616,6 +714,29 @@ export default function TicketsPage() {
                             <span>{status.label}</span>
                           </span>
                         </div>
+                        {(user.role === "USER" ||
+                          user.role === "SUPER_ADMIN") && (
+                          <div className="mt-3 max-w-full">
+                            <SelectMenu
+                              value={ticket.assignee?.id ?? "__unassigned__"}
+                              onChange={(value) =>
+                                handleAssigneeChange(ticket.id, value)
+                              }
+                              options={[
+                                {
+                                  value: "__unassigned__",
+                                  label: "Assignee: Unassigned",
+                                },
+                                ...assignableUsers.map((member) => ({
+                                  value: member.id,
+                                  label: `Assignee: ${member.name} (${member.email})`,
+                                })),
+                              ]}
+                              className="w-full"
+                              triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                            />
+                          </div>
+                        )}
                       </div>
 
                       {(user.role === "USER" ||
@@ -767,7 +888,7 @@ export default function TicketsPage() {
                     void executeImport(false);
                   }}
                   disabled={importBusy}
-                  className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {importBusy ? "Working..." : "Import Tickets"}
                 </button>

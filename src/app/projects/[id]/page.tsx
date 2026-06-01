@@ -46,6 +46,13 @@ type ClientOption = {
   invitationStatus?: "NOT_INVITED" | "INVITED_NOT_CONFIRMED" | "ACTIVATED";
 };
 
+type GithubRepoOption = {
+  owner: string;
+  name: string;
+  url: string;
+  fullName: string;
+};
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -64,6 +71,14 @@ export default function ProjectDetailPage() {
   const [assigningClient, setAssigningClient] = useState(false);
   const [invitingClient, setInvitingClient] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: "", email: "" });
+  const [showRepoPicker, setShowRepoPicker] = useState(false);
+  const [availableGithubRepos, setAvailableGithubRepos] = useState<
+    GithubRepoOption[]
+  >([]);
+  const [selectedGithubRepoUrl, setSelectedGithubRepoUrl] = useState("");
+  const [loadingGithubRepos, setLoadingGithubRepos] = useState(false);
+  const [savingGithubRepos, setSavingGithubRepos] = useState(false);
+  const [githubReposError, setGithubReposError] = useState("");
 
   useEffect(() => {
     if (authLoading || !user || user.role === "CLIENT") return;
@@ -290,6 +305,105 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const fetchAvailableGithubRepos = async () => {
+    setLoadingGithubRepos(true);
+    setGithubReposError("");
+
+    try {
+      const response = await fetch("/api/github/repos");
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to load GitHub repositories");
+      }
+
+      const repos = (await response.json()) as Array<{
+        name?: string;
+        full_name?: string;
+        html_url?: string;
+        owner?: { login?: string };
+      }>;
+
+      const normalized = repos
+        .map((repo) => {
+          const owner = repo.owner?.login;
+          const name = repo.name;
+          const url = repo.html_url;
+          if (!owner || !name || !url) return null;
+          return {
+            owner,
+            name,
+            url,
+            fullName: repo.full_name || `${owner}/${name}`,
+          };
+        })
+        .filter((repo): repo is GithubRepoOption => repo !== null);
+
+      setAvailableGithubRepos(normalized);
+    } catch (err) {
+      setAvailableGithubRepos([]);
+      setGithubReposError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load GitHub repositories",
+      );
+    } finally {
+      setLoadingGithubRepos(false);
+    }
+  };
+
+  const openRepoPicker = () => {
+    setActionError("");
+    setActionMessage("");
+    setGithubReposError("");
+    setSelectedGithubRepoUrl(project?.githubRepos?.[0]?.url ?? "");
+    setShowRepoPicker(true);
+    void fetchAvailableGithubRepos();
+  };
+
+  const saveProjectRepos = async () => {
+    if (!project || savingGithubRepos) return;
+
+    setSavingGithubRepos(true);
+    setActionError("");
+    setActionMessage("");
+    setGithubReposError("");
+
+    try {
+      const selected = availableGithubRepos.find(
+        (repo) => repo.url === selectedGithubRepoUrl,
+      );
+
+      const githubRepos = selected
+        ? [{ owner: selected.owner, name: selected.name, url: selected.url }]
+        : [];
+
+      const response = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ githubRepos }),
+      });
+
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error || "Failed to save project repo");
+      }
+
+      setProject(body as ProjectDetail);
+      setActionMessage(
+        selected
+          ? "Project repo linked. Tickets in this project now inherit it."
+          : "Project repo link cleared.",
+      );
+      setShowRepoPicker(false);
+    } catch (err) {
+      setGithubReposError(
+        err instanceof Error ? err.message : "Failed to save project repo",
+      );
+    } finally {
+      setSavingGithubRepos(false);
+    }
+  };
+
   if (authLoading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -494,7 +608,7 @@ export default function ProjectDetailPage() {
                   <button
                     type="submit"
                     disabled={assigningClient || loadingClients}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {assigningClient ? "Saving..." : "Save Client Assignment"}
                   </button>
@@ -578,16 +692,92 @@ export default function ProjectDetailPage() {
                   </div>
                 )}
               </div>
-              <Link
-                href="/settings"
+              <button
+                type="button"
+                onClick={openRepoPicker}
                 className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700"
               >
-                Manage GitHub connections
-              </Link>
+                Link Project Repo
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {showRepoPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-800 dark:bg-[#111217]">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Link Project Repository
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Pick a repository from connected GitHub account access.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {loadingGithubRepos ? (
+                <p className="text-sm text-gray-500">Loading repositories...</p>
+              ) : (
+                <SelectMenu
+                  value={selectedGithubRepoUrl}
+                  onChange={setSelectedGithubRepoUrl}
+                  options={[
+                    { value: "", label: "No project repo" },
+                    ...availableGithubRepos.map((repo) => ({
+                      value: repo.url,
+                      label: repo.fullName,
+                    })),
+                  ]}
+                  className="w-full"
+                  triggerClassName="border-gray-300 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+              )}
+
+              {githubReposError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/20 dark:text-red-300">
+                  {githubReposError}
+                </div>
+              )}
+
+              {!loadingGithubRepos &&
+                availableGithubRepos.length === 0 &&
+                !githubReposError && (
+                  <p className="text-sm text-gray-500">
+                    No repositories found for the connected GitHub access.
+                  </p>
+                )}
+
+              <div className="flex items-center justify-between gap-3 pt-2">
+                <Link
+                  href="/settings"
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  Manage GitHub connections
+                </Link>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowRepoPicker(false)}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void saveProjectRepos();
+                    }}
+                    disabled={savingGithubRepos || loadingGithubRepos}
+                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingGithubRepos ? "Saving..." : "Save Repo"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}

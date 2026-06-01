@@ -96,7 +96,7 @@ const statusConfig = {
     bgColor: "bg-blue-500/10",
   },
   REVISIONS: {
-    label: "Review",
+    label: "REVIEW",
     color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
     icon: AlertCircle,
     bgColor: "bg-yellow-500/10",

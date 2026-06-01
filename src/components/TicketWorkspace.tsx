@@ -84,7 +84,9 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const [obligationsLoading, setObligationsLoading] = useState(false);
   const [creatingObligation, setCreatingObligation] = useState(false);
   const [obligationTitle, setObligationTitle] = useState("");
-  const [obligationDueAt, setObligationDueAt] = useState("");
+  const [obligationDueAt, setObligationDueAt] = useState<Date | undefined>(
+    undefined,
+  );
 
   // GitHub integration states
   const [_checkingGithub, setCheckingGithub] = useState(true);
@@ -378,14 +380,12 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
-          dueAt: obligationDueAt
-            ? new Date(obligationDueAt).toISOString()
-            : null,
+          dueAt: obligationDueAt ? obligationDueAt.toISOString() : null,
         }),
       });
       if (response.ok) {
         setObligationTitle("");
-        setObligationDueAt("");
+        setObligationDueAt(undefined);
         void loadObligations();
       }
     } finally {
@@ -612,9 +612,11 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   };
 
   const statusLabel = (s: string) => {
-    if (s === "REVISIONS") return "Review";
+    if (s === "REVISIONS") return "REVIEW";
     return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   };
+
+  const primaryProjectRepo = t.project?.githubRepos?.[0] ?? null;
 
   return (
     <DashboardLayout>
@@ -661,11 +663,28 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
               )}
             </div>
             <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-              Created by {t.creator.name} · {formatWhen(t.createdAt)}
+              Created {formatWhen(t.createdAt)}
               {t.updatedAt && t.updatedAt !== t.createdAt
                 ? ` · Updated ${formatWhen(t.updatedAt)}`
                 : null}
             </p>
+            {t.project ? (
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Project repo:{" "}
+                {primaryProjectRepo ? (
+                  <a
+                    href={primaryProjectRepo.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    {primaryProjectRepo.owner}/{primaryProjectRepo.name}
+                  </a>
+                ) : (
+                  <span>Not linked</span>
+                )}
+              </p>
+            ) : null}
             <p className="mt-2 mb-4 font-mono text-xs text-gray-400 break-all">
               Ticket ID: {t.id}
             </p>
@@ -726,12 +745,29 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                     placeholder="Client action required"
                     className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                   />
-                  <input
-                    type="datetime-local"
-                    value={obligationDueAt}
-                    onChange={(e) => setObligationDueAt(e.target.value)}
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "h-10 justify-start text-left font-normal border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950 dark:text-white",
+                          !obligationDueAt && "text-muted-foreground",
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {obligationDueAt
+                          ? format(obligationDueAt, "PPP")
+                          : "Pick due date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={obligationDueAt}
+                        onSelect={setObligationDueAt}
+                      />
+                    </PopoverContent>
+                  </Popover>
                   <button
                     type="button"
                     onClick={() => void createObligation()}
@@ -1370,7 +1406,9 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                           #{pr.number} {pr.title}
                         </p>
                         <p className="text-[10px] text-gray-400">
-                          Created by {pr.user?.login}
+                          {pr.created_at
+                            ? `Created ${formatWhen(pr.created_at)}`
+                            : "Created"}
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">

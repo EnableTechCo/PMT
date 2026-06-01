@@ -5,14 +5,6 @@ import { getUserFromRequest } from "@/lib/auth";
 import { canAccessTeam, getUserWithTeamAccess } from "@/lib/access";
 import { writeAuditLog } from "@/lib/audit";
 
-const projectInclude = {
-  team: { select: { id: true, name: true } },
-  portfolio: { select: { id: true, name: true } },
-  client: { select: { id: true, name: true, email: true } },
-  githubRepos: { select: { id: true, owner: true, name: true, url: true } },
-  _count: { select: { milestones: true, tickets: true } },
-} as const;
-
 function parseGithubRepoFromUrl(repoUrl: string) {
   try {
     const parsed = new URL(repoUrl);
@@ -60,28 +52,6 @@ function normalizeGithubRepoInput(repo: unknown) {
   }
 
   return { owner, name, url };
-}
-
-function isMissingProjectRelationError(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybeError = error as {
-    code?: unknown;
-    message?: unknown;
-    details?: unknown;
-  };
-  const code = typeof maybeError.code === "string" ? maybeError.code : "";
-  const message =
-    typeof maybeError.message === "string" ? maybeError.message : "";
-  const details =
-    typeof maybeError.details === "string" ? maybeError.details : "";
-
-  return (
-    code === "PGRST200" &&
-    (message.includes("Project") || details.includes("Project"))
-  );
 }
 
 export async function GET(request: NextRequest) {
@@ -149,117 +119,122 @@ export async function GET(request: NextRequest) {
       where.teamId = teamId;
     }
 
-    let projects: any[];
-    try {
-      projects = await db.project.findMany({
-        where,
-        include: projectInclude,
-        orderBy: { updatedAt: "desc" },
+    const baseProjects = await db.project.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+    });
+
+    const projectIds = Array.from(
+      new Set(baseProjects.map((p: any) => p.id).filter(Boolean)),
+    );
+    const teamIds = Array.from(
+      new Set(baseProjects.map((p: any) => p.teamId).filter(Boolean)),
+    );
+    const portfolioIds = Array.from(
+      new Set(baseProjects.map((p: any) => p.portfolioId).filter(Boolean)),
+    );
+    const clientIds = Array.from(
+      new Set(baseProjects.map((p: any) => p.clientId).filter(Boolean)),
+    );
+    const teams = teamIds.length
+      ? await db.team.findMany({
+          where: { id: { in: teamIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const [portfolios, clients, githubRepos, milestones, tickets] =
+      await Promise.all([
+        portfolioIds.length
+          ? db.portfolio.findMany({
+              where: { id: { in: portfolioIds } },
+              select: { id: true, name: true },
+            })
+          : Promise.resolve([]),
+        clientIds.length
+          ? db.client.findMany({
+              where: { id: { in: clientIds } },
+              select: { id: true, name: true, email: true },
+            })
+          : Promise.resolve([]),
+        projectIds.length
+          ? db.githubRepo.findMany({
+              where: { projectId: { in: projectIds } },
+              select: {
+                id: true,
+                projectId: true,
+                owner: true,
+                name: true,
+                url: true,
+              },
+            })
+          : Promise.resolve([]),
+        projectIds.length
+          ? db.milestone.findMany({
+              where: { projectId: { in: projectIds } },
+              select: { projectId: true },
+            })
+          : Promise.resolve([]),
+        projectIds.length
+          ? db.ticket.findMany({
+              where: { projectId: { in: projectIds } },
+              select: { projectId: true },
+            })
+          : Promise.resolve([]),
+      ]);
+
+    const teamById = new Map(teams.map((team: any) => [team.id, team]));
+    const portfolioById = new Map(portfolios.map((p: any) => [p.id, p]));
+    const clientById = new Map(clients.map((c: any) => [c.id, c]));
+
+    const reposByProject = new Map<string, any[]>();
+    for (const repo of githubRepos as any[]) {
+      const projectId = repo.projectId as string | undefined;
+      if (!projectId) continue;
+      const list = reposByProject.get(projectId) ?? [];
+      list.push({
+        id: repo.id,
+        owner: repo.owner,
+        name: repo.name,
+        url: repo.url,
       });
-    } catch (embedError) {
-      if (!isMissingProjectRelationError(embedError)) {
-        throw embedError;
-      }
-
-      console.warn(
-        "[projects] relation embed unavailable, using fallback hydration",
-        {
-          error: embedError,
-          where,
-        },
-      );
-
-      const baseProjects = await db.project.findMany({
-        where,
-        orderBy: { updatedAt: "desc" },
-      });
-
-      const projectIds = Array.from(
-        new Set(baseProjects.map((p: any) => p.id).filter(Boolean)),
-      );
-      const teamIds = Array.from(
-        new Set(baseProjects.map((p: any) => p.teamId).filter(Boolean)),
-      );
-      const portfolioIds = Array.from(
-        new Set(baseProjects.map((p: any) => p.portfolioId).filter(Boolean)),
-      );
-      const clientIds = Array.from(
-        new Set(baseProjects.map((p: any) => p.clientId).filter(Boolean)),
-      );
-
-      const [teams, portfolios, clients, milestones, tickets] =
-        await Promise.all([
-          teamIds.length
-            ? db.team.findMany({
-                where: { id: { in: teamIds } },
-                select: { id: true, name: true },
-              })
-            : Promise.resolve([]),
-          portfolioIds.length
-            ? db.portfolio.findMany({
-                where: { id: { in: portfolioIds } },
-                select: { id: true, name: true },
-              })
-            : Promise.resolve([]),
-          clientIds.length
-            ? db.client.findMany({
-                where: { id: { in: clientIds } },
-                select: { id: true, name: true, email: true },
-              })
-            : Promise.resolve([]),
-          projectIds.length
-            ? db.milestone.findMany({
-                where: { projectId: { in: projectIds } },
-                select: { projectId: true },
-              })
-            : Promise.resolve([]),
-          projectIds.length
-            ? db.ticket.findMany({
-                where: { projectId: { in: projectIds } },
-                select: { projectId: true },
-              })
-            : Promise.resolve([]),
-        ]);
-
-      const teamById = new Map(teams.map((t: any) => [t.id, t]));
-      const portfolioById = new Map(portfolios.map((p: any) => [p.id, p]));
-      const clientById = new Map(clients.map((c: any) => [c.id, c]));
-
-      const milestoneCountByProject = new Map<string, number>();
-      for (const row of milestones as any[]) {
-        const projectId = row.projectId as string | undefined;
-        if (!projectId) continue;
-        milestoneCountByProject.set(
-          projectId,
-          (milestoneCountByProject.get(projectId) ?? 0) + 1,
-        );
-      }
-
-      const ticketCountByProject = new Map<string, number>();
-      for (const row of tickets as any[]) {
-        const projectId = row.projectId as string | undefined;
-        if (!projectId) continue;
-        ticketCountByProject.set(
-          projectId,
-          (ticketCountByProject.get(projectId) ?? 0) + 1,
-        );
-      }
-
-      projects = baseProjects.map((project: any) => ({
-        ...project,
-        team: teamById.get(project.teamId) ?? null,
-        portfolio: project.portfolioId
-          ? (portfolioById.get(project.portfolioId) ?? null)
-          : null,
-        client: project.clientId
-          ? (clientById.get(project.clientId) ?? null)
-          : null,
-        _count: {
-          milestones: milestoneCountByProject.get(project.id) ?? 0,
-          tickets: ticketCountByProject.get(project.id) ?? 0,
-        },
-      }));
+      reposByProject.set(projectId, list);
     }
+
+    const milestoneCountByProject = new Map<string, number>();
+    for (const row of milestones as any[]) {
+      const projectId = row.projectId as string | undefined;
+      if (!projectId) continue;
+      milestoneCountByProject.set(
+        projectId,
+        (milestoneCountByProject.get(projectId) ?? 0) + 1,
+      );
+    }
+
+    const ticketCountByProject = new Map<string, number>();
+    for (const row of tickets as any[]) {
+      const projectId = row.projectId as string | undefined;
+      if (!projectId) continue;
+      ticketCountByProject.set(
+        projectId,
+        (ticketCountByProject.get(projectId) ?? 0) + 1,
+      );
+    }
+
+    const projects = baseProjects.map((project: any) => ({
+      ...project,
+      team: project.teamId ? (teamById.get(project.teamId) ?? null) : null,
+      portfolio: project.portfolioId
+        ? (portfolioById.get(project.portfolioId) ?? null)
+        : null,
+      client: project.clientId
+        ? (clientById.get(project.clientId) ?? null)
+        : null,
+      githubRepos: reposByProject.get(project.id) ?? [],
+      _count: {
+        milestones: milestoneCountByProject.get(project.id) ?? 0,
+        tickets: ticketCountByProject.get(project.id) ?? 0,
+      },
+    }));
 
     if (isSuperAdmin) {
       console.info("[projects][super-admin] GET success", {

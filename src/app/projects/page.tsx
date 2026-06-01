@@ -217,7 +217,7 @@ export default function ProjectsPage() {
               <button
                 type="button"
                 onClick={openCreateModal}
-                className="rounded-lg border border-indigo-300 bg-indigo-600 px-4 py-2 text-sm text-white transition hover:bg-indigo-700"
+                className="rounded-lg border border-indigo-300 bg-brand-600 px-4 py-2 text-sm text-white transition hover:bg-indigo-700"
               >
                 New project
               </button>
@@ -454,7 +454,7 @@ export default function ProjectsPage() {
                       !createForm.name.trim() ||
                       !createForm.teamId
                     }
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {creatingProject ? "Creating..." : "Create Project"}
                   </button>

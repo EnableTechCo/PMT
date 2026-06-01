@@ -14,6 +14,29 @@ const projectInclude = {
   _count: { select: { tickets: true } },
 } as const;
 
+function normalizeGithubRepoInput(repo: unknown) {
+  if (!repo || typeof repo !== "object") {
+    return null;
+  }
+
+  const candidate = repo as {
+    owner?: unknown;
+    name?: unknown;
+    url?: unknown;
+  };
+
+  const owner =
+    typeof candidate.owner === "string" ? candidate.owner.trim() : "";
+  const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
+  const url = typeof candidate.url === "string" ? candidate.url.trim() : "";
+
+  if (!owner || !name || !url) {
+    return null;
+  }
+
+  return { owner, name, url };
+}
+
 function isProjectRelationError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const maybe = error as {
@@ -165,6 +188,23 @@ export async function PATCH(
       portfolioId?: string | null;
       clientId?: string | null;
     } = {};
+    const hasGithubReposUpdate = Array.isArray(body.githubRepos);
+    const reposToLink = hasGithubReposUpdate
+      ? (body.githubRepos as unknown[])
+          .map((repo) => normalizeGithubRepoInput(repo))
+          .filter(
+            (repo): repo is { owner: string; name: string; url: string } =>
+              repo !== null,
+          )
+          .filter(
+            (repo, index, arr) =>
+              arr.findIndex(
+                (item) =>
+                  item.owner.toLowerCase() === repo.owner.toLowerCase() &&
+                  item.name.toLowerCase() === repo.name.toLowerCase(),
+              ) === index,
+          )
+      : [];
 
     if (typeof body.name === "string") data.name = body.name.trim();
     if (typeof body.description === "string")
@@ -190,23 +230,44 @@ export async function PATCH(
     if (body.clientId === null) data.clientId = null;
     if (typeof body.clientId === "string") data.clientId = body.clientId;
 
-    if (Object.keys(data).length === 0) {
+    if (Object.keys(data).length === 0 && !hasGithubReposUpdate) {
       return NextResponse.json({ error: "No valid fields" }, { status: 400 });
     }
 
-    let project: any;
-    try {
-      project = await db.project.update({
-        where: { id },
-        data,
-        include: projectInclude,
-      });
-    } catch (error) {
-      if (!isProjectRelationError(error)) throw error;
-      await db.project.update({
-        where: { id },
-        data,
-      });
+    let project: any = null;
+    if (Object.keys(data).length > 0) {
+      try {
+        project = await db.project.update({
+          where: { id },
+          data,
+          include: projectInclude,
+        });
+      } catch (error) {
+        if (!isProjectRelationError(error)) throw error;
+        await db.project.update({
+          where: { id },
+          data,
+        });
+        project = await hydrateProjectById(id);
+      }
+    } else {
+      project = await hydrateProjectById(id);
+    }
+
+    if (hasGithubReposUpdate) {
+      await db.githubRepo.deleteMany({ where: { projectId: id } });
+
+      for (const repo of reposToLink) {
+        await db.githubRepo.create({
+          data: {
+            projectId: id,
+            owner: repo.owner,
+            name: repo.name,
+            url: repo.url,
+          },
+        });
+      }
+
       project = await hydrateProjectById(id);
     }
 
@@ -215,7 +276,11 @@ export async function PATCH(
       action: "PROJECT_UPDATE",
       entityType: "Project",
       entityId: id,
-      metadata: data,
+      metadata: {
+        ...data,
+        githubReposUpdated: hasGithubReposUpdate,
+        githubRepoCount: hasGithubReposUpdate ? reposToLink.length : undefined,
+      },
     });
 
     return NextResponse.json(project);

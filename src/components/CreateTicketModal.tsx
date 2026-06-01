@@ -44,7 +44,7 @@ const statusOptions = [
   { value: "TODO", label: "To Do", color: "bg-slate-500" },
   { value: "REFINE", label: "Refine", color: "bg-indigo-500" },
   { value: "IN_PROGRESS", label: "In Progress", color: "bg-blue-500" },
-  { value: "REVISIONS", label: "Review", color: "bg-yellow-500" },
+  { value: "REVISIONS", label: "REVIEW", color: "bg-yellow-500" },
   { value: "COMPLETE", label: "Complete", color: "bg-green-500" },
   { value: "CLIENT_REVIEW", label: "Client Review", color: "bg-brand-600" },
 ];

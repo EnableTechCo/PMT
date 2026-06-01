@@ -921,7 +921,7 @@ export default function ClientsPage() {
                     "inline-flex h-9 items-center rounded-md px-4 text-sm font-medium text-white transition",
                     confirmAction === "delete"
                       ? "bg-red-600 hover:bg-red-700"
-                      : "bg-indigo-600 hover:bg-indigo-700",
+                      : "bg-brand-600 hover:bg-indigo-700",
                     confirmLoading && "cursor-wait opacity-70",
                   )}
                 >

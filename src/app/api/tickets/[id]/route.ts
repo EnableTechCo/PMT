@@ -21,7 +21,6 @@ const ticketInclude = {
       name: true,
       health: true,
       progress: true,
-      githubRepos: true,
     },
   },
 } as const;
@@ -52,11 +51,105 @@ const fullTicketInclude = {
   },
 } as const;
 
+function isTicketRelationError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybe = error as { code?: unknown };
+  const code = typeof maybe.code === "string" ? maybe.code : "";
+  return code.startsWith("PGRST2");
+}
+
 async function loadTicketForAuth(id: string) {
   return db.ticket.findUnique({
     where: { id },
     include: { team: true },
   });
+}
+
+async function attachProjectRepos(ticket: any) {
+  const projectId = ticket?.project?.id;
+  if (!projectId) return ticket;
+
+  const githubRepos = await db.githubRepo.findMany({
+    where: { projectId },
+    select: { id: true, owner: true, name: true, url: true },
+  });
+
+  return {
+    ...ticket,
+    project: {
+      ...ticket.project,
+      githubRepos,
+    },
+  };
+}
+
+async function hydrateTicketFallback(baseTicket: any) {
+  if (!baseTicket) return null;
+
+  const [creator, assignee, client, team, project] = await Promise.all([
+    baseTicket.creatorId
+      ? db.user.findUnique({
+          where: { id: baseTicket.creatorId },
+          select: { id: true, name: true, email: true },
+        })
+      : Promise.resolve(null),
+    baseTicket.assigneeId
+      ? db.user.findUnique({
+          where: { id: baseTicket.assigneeId },
+          select: { id: true, name: true, email: true },
+        })
+      : Promise.resolve(null),
+    baseTicket.clientId
+      ? db.client.findUnique({
+          where: { id: baseTicket.clientId },
+          select: { id: true, name: true, email: true },
+        })
+      : Promise.resolve(null),
+    baseTicket.teamId
+      ? db.team.findUnique({
+          where: { id: baseTicket.teamId },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve(null),
+    baseTicket.projectId
+      ? db.project.findUnique({
+          where: { id: baseTicket.projectId },
+          select: {
+            id: true,
+            name: true,
+            health: true,
+            progress: true,
+          },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  let projectWithRepos = project;
+  if (project) {
+    const repos = await db.githubRepo.findMany({
+      where: { projectId: project.id },
+      select: { id: true, owner: true, name: true, url: true },
+    });
+    projectWithRepos = {
+      ...project,
+      githubRepos: repos,
+    };
+  }
+
+  return {
+    ...baseTicket,
+    creator,
+    assignee,
+    client,
+    team,
+    project: projectWithRepos,
+    comments: [],
+    checklistItems: [],
+    attachments: [],
+    activities: [],
+    githubBranches: [],
+    githubPullRequests: [],
+  };
 }
 
 async function assertCanReadTicket(
@@ -91,10 +184,17 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const ticket = await db.ticket.findUnique({
-      where: { id },
-      include: fullTicketInclude,
-    });
+    let ticket: any = null;
+    try {
+      ticket = await db.ticket.findUnique({
+        where: { id },
+        include: fullTicketInclude,
+      });
+    } catch (error) {
+      if (!isTicketRelationError(error)) throw error;
+      const baseTicket = await db.ticket.findUnique({ where: { id } });
+      ticket = await hydrateTicketFallback(baseTicket);
+    }
 
     if (!ticket) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
@@ -105,7 +205,7 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    return NextResponse.json(ticket);
+    return NextResponse.json(await attachProjectRepos(ticket));
   } catch (e) {
     console.error("GET ticket error:", e);
     return NextResponse.json(
@@ -389,11 +489,21 @@ export async function PATCH(
       }
     }
 
-    const updatedTicket = await db.ticket.update({
+    const updated = await db.ticket.update({
       where: { id },
       data: updates as Record<string, unknown>,
-      include: fullTicketInclude,
     });
+
+    let updatedTicket: any;
+    try {
+      updatedTicket = await db.ticket.findUnique({
+        where: { id: updated.id },
+        include: fullTicketInclude,
+      });
+    } catch (error) {
+      if (!isTicketRelationError(error)) throw error;
+      updatedTicket = await hydrateTicketFallback(updated);
+    }
 
     await writeAuditLog({
       actorId: user.id,
@@ -403,7 +513,7 @@ export async function PATCH(
       metadata: updates as Record<string, unknown>,
     });
 
-    return NextResponse.json(updatedTicket);
+    return NextResponse.json(await attachProjectRepos(updatedTicket));
   } catch (error) {
     console.error("Update ticket error:", error);
     return NextResponse.json(

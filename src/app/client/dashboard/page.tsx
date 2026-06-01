@@ -46,7 +46,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
     color: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   },
   REVISIONS: {
-    label: "Review",
+    label: "REVIEW",
     color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   },
   COMPLETE: {
