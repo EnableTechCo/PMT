@@ -9,7 +9,7 @@ jest.mock("@/lib/user-store", () => ({
 }));
 
 const params = {};
-const payload = {
+const _payload = {
   id: "id-test",
   email: "dev@e-t.co.za",
   password: "P@ssword123",

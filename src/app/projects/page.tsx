@@ -82,6 +82,38 @@ export default function ProjectsPage() {
     void loadClients();
   }, [activeTeamId, teams, loadClients]);
 
+  const load = useCallback(async () => {
+    if (!user || user.role === "CLIENT") return;
+    setError("");
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (user.role === "USER") {
+        if (!activeTeamId) {
+          setProjects([]);
+          setLoading(false);
+          return;
+        }
+        params.set("teamId", activeTeamId);
+      } else if (user.role === "SUPER_ADMIN" && activeTeamId) {
+        params.set("teamId", activeTeamId);
+      }
+      const res = await fetch(`/api/projects?${params}`);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "Failed to load projects");
+      }
+      setProjects(await res.json());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+      if (projects.length === 0) {
+        setProjects([]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [user, activeTeamId, projects.length]);
+
   const handleCreateProject = useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault();
@@ -121,38 +153,6 @@ export default function ProjectsPage() {
     },
     [createForm, load, router],
   );
-
-  const load = useCallback(async () => {
-    if (!user || user.role === "CLIENT") return;
-    setError("");
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (user.role === "USER") {
-        if (!activeTeamId) {
-          setProjects([]);
-          setLoading(false);
-          return;
-        }
-        params.set("teamId", activeTeamId);
-      } else if (user.role === "SUPER_ADMIN" && activeTeamId) {
-        params.set("teamId", activeTeamId);
-      }
-      const res = await fetch(`/api/projects?${params}`);
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error || "Failed to load projects");
-      }
-      setProjects(await res.json());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
-      if (projects.length === 0) {
-        setProjects([]);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [user, activeTeamId, projects.length]);
 
   useEffect(() => {
     if (authLoading || !user || user.role === "CLIENT") return;
