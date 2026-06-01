@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -34,24 +35,52 @@ export function SelectMenu({
   size = "md",
 }: SelectMenuProps) {
   const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const selected = options.find((o) => o.value === value);
 
   useEffect(() => {
     if (!open) return;
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setMenuStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 1000,
+      });
+    };
+
+    updatePosition();
+
     const onDoc = (e: MouseEvent) => {
       const el = rootRef.current;
-      if (el && !el.contains(e.target as Node)) setOpen(false);
+      const menuEl = menuRef.current;
+      const target = e.target as Node;
+      if (el?.contains(target) || menuEl?.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
     };
   }, [open]);
 
@@ -63,6 +92,7 @@ export function SelectMenu({
   return (
     <div ref={rootRef} className={cn("relative", className)}>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         aria-expanded={open}
@@ -91,46 +121,51 @@ export function SelectMenu({
         />
       </button>
 
-      {open && (
-        <div
-          role="listbox"
-          className={cn(
-            "absolute left-0 right-0 top-full z-50 mt-0.5 overflow-hidden rounded-md border border-[var(--border)] bg-white py-0.5 shadow-card",
-            "dark:border-gray-700 dark:bg-[#1c1c24]",
-            size === "sm" && "mt-0",
-            menuClassName,
-          )}
-        >
-          <div className="max-h-60 overflow-y-auto">
-            {options.map((opt) => {
-              const isActive = opt.value === value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="option"
-                  aria-selected={isActive}
-                  disabled={opt.disabled}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "w-full text-left transition-colors",
-                    size === "md" ? mdItem : smItem,
-                    isActive
-                      ? "bg-brand-50 font-medium text-brand-900 dark:bg-brand-950/50 dark:text-brand-100"
-                      : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/5",
-                    opt.disabled && "cursor-not-allowed opacity-50",
-                  )}
-                >
-                  <span className="block truncate">{opt.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {open &&
+        typeof document !== "undefined" &&
+        menuStyle &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="listbox"
+            style={menuStyle}
+            className={cn(
+              "overflow-hidden rounded-md border border-[var(--border)] bg-white py-0.5 shadow-card",
+              "dark:border-gray-700 dark:bg-[#1c1c24]",
+              menuClassName,
+            )}
+          >
+            <div className="max-h-60 overflow-y-auto">
+              {options.map((opt) => {
+                const isActive = opt.value === value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="option"
+                    aria-selected={isActive}
+                    disabled={opt.disabled}
+                    onClick={() => {
+                      onChange(opt.value);
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      "w-full text-left transition-colors",
+                      size === "md" ? mdItem : smItem,
+                      isActive
+                        ? "bg-brand-50 font-medium text-brand-900 dark:bg-brand-950/50 dark:text-brand-100"
+                        : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/5",
+                      opt.disabled && "cursor-not-allowed opacity-50",
+                    )}
+                  >
+                    <span className="block truncate">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
