@@ -63,17 +63,26 @@ function buildInviteLink(
   invitePathOrUrl: string,
   appBaseUrl?: string,
 ) {
-  if (/^https?:\/\//i.test(invitePathOrUrl)) {
-    return invitePathOrUrl;
-  }
-
   const baseUrl = resolveAppBaseUrl(appBaseUrl);
 
-  if (invitePathOrUrl.includes("{token}")) {
-    return `${baseUrl}${invitePathOrUrl.replace("{token}", inviteToken)}`;
+  if (/^https?:\/\//i.test(invitePathOrUrl)) {
+    if (invitePathOrUrl.startsWith(baseUrl)) {
+      return invitePathOrUrl;
+    }
+
+    const url = new URL(invitePathOrUrl);
+    return `${url.origin}${url.pathname}${url.search}${url.hash}`;
   }
 
-  return `${baseUrl}${invitePathOrUrl}${inviteToken}`;
+  const relativePath = invitePathOrUrl.startsWith("/")
+    ? invitePathOrUrl
+    : `/${invitePathOrUrl}`;
+
+  if (relativePath.includes("{token}")) {
+    return `${baseUrl}${relativePath.replace("{token}", inviteToken)}`;
+  }
+
+  return `${baseUrl}${relativePath}${inviteToken}`;
 }
 
 export async function getEmailDiagnostics(): Promise<Diagnostics> {

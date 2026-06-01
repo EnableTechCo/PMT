@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
     const inviteLink =
       role === "CLIENT"
         ? "/auth/invite?token="
-        : `${appBaseUrl}/auth/login?email=${encodeURIComponent(email)}&inviteToken=${encodeURIComponent(inviteToken)}`;
+        : `/auth/login?email=${encodeURIComponent(email)}&inviteToken=`;
 
     // Send invite email — prefer provided name, else use local-part of email
     const inviteName =

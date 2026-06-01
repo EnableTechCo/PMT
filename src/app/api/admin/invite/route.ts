@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
     const inviteLink =
       selectedRole === Role.CLIENT
         ? "/auth/invite?token="
-        : `${appBaseUrl}/auth/login?email=${encodeURIComponent(email)}&inviteToken=${encodeURIComponent(token)}`;
+        : `/auth/login?email=${encodeURIComponent(email)}&inviteToken=`;
 
     // Use the invite HTML template for the admin invite and point the CTA to the correct entry flow
     await sendAdminInviteEmail(
