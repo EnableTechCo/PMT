@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
+import { createNotification } from "@/lib/ticketActivity";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -31,6 +32,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const ticket = await db.ticket.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        creatorId: true,
+        assigneeId: true,
+      },
+    });
+    if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+
     const { type, name, url, title, number, state } = await request.json();
 
     if (type === "branch") {
@@ -46,6 +60,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const pr = await db.githubPullRequest.create({
         data: { ticketId: id, title, number, url, state }
       });
+
+      if (state === "open") {
+        const targets = new Set<string>();
+        if (ticket.creatorId) targets.add(ticket.creatorId);
+        if (ticket.assigneeId) targets.add(ticket.assigneeId);
+        targets.delete(sessionUser.id);
+
+        for (const userId of targets) {
+          await createNotification({
+            userId,
+            type: "PR_READY_FOR_REVIEW",
+            title: `PR ready for review: ${title}`,
+            body: url,
+            ticketId: id,
+          });
+        }
+      }
+
       return NextResponse.json(pr);
     }
 

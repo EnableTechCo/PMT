@@ -2,66 +2,45 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { MonitoringTabs } from "@/components/MonitoringTabs";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  Activity,
-  AlertTriangle,
-  Database,
-  Loader2,
-  RefreshCcw,
-  ShieldCheck,
-  Radar,
-  Workflow,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ChevronDown, ExternalLink, Loader2, RefreshCcw } from "lucide-react";
 
-type MonitoringAuditLog = {
-  id: string;
-  action: string;
-  entityType: string;
-  entityId: string;
-  metadata: string | null;
-  createdAt: string;
-  actor: {
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-  } | null;
+type SentryInboxAlert = {
+  uid: number;
+  date: string;
+  from: string;
+  to: string;
+  issueKey: string | null;
+  errorTitle: string;
+  errorMessage: string | null;
+  level: string | null;
+  sentryUrl: string | null;
+  project: string | null;
+  environment: string | null;
+  culprit: string | null;
+  eventId: string | null;
+  alertRuleId: string | null;
+  requestUrl: string | null;
+  requestMethod: string | null;
+  userIp: string | null;
+  exceptionText: string | null;
+  exceptionType: string | null;
+  details: string[];
+  subject: string;
 };
 
-type MonitoringOverview = {
-  health: {
-    status: string;
-    timestamp: string;
-    uptime: number;
-    environment: string | null;
-    version: string | null;
-    database: {
-      reachable: boolean;
-      users: number;
-    };
-  };
-  auditLogs: MonitoringAuditLog[];
-  integrations: {
-    sentry: {
-      configured: boolean;
-      environment: string | null;
-      release: string | null;
-    };
-  };
+type SentryInboxOverview = {
+  ok: boolean;
+  inbox: string;
+  checkedAt: string;
+  scannedCount: number;
+  lookbackHours: number;
+  foundCount: number;
+  selectedProject: string;
+  projects: Array<{ key: string; label: string; count: number }>;
+  alerts: SentryInboxAlert[];
 };
-
-function formatDuration(totalSeconds: number) {
-  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "0s";
-  const minutes = Math.floor(totalSeconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  if (days > 0) return `${days}d ${hours % 24}h`;
-  if (hours > 0) return `${hours}h ${minutes % 60}m`;
-  if (minutes > 0) return `${minutes}m ${Math.floor(totalSeconds % 60)}s`;
-  return `${Math.floor(totalSeconds)}s`;
-}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -70,34 +49,71 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function levelTone(level: string | null) {
+  if (level === "fatal") {
+    return {
+      chip: "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200",
+      row: "border-l-rose-500",
+    };
+  }
+  if (level === "error") {
+    return {
+      chip: "border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/40 dark:text-red-200",
+      row: "border-l-red-500",
+    };
+  }
+  if (level === "warning") {
+    return {
+      chip: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200",
+      row: "border-l-amber-500",
+    };
+  }
+  return {
+    chip: "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-200",
+    row: "border-l-sky-500",
+  };
+}
+
 export default function MonitoringPage() {
   const { user, loading: authLoading } = useAuth();
-  const [overview, setOverview] = useState<MonitoringOverview | null>(null);
+  const [overview, setOverview] = useState<SentryInboxOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [lastUpdated, setLastUpdated] = useState("");
+  const [projectFilter, setProjectFilter] = useState("all");
+  const [expandedException, setExpandedException] = useState<
+    Record<number, boolean>
+  >({});
+  const [copiedUid, setCopiedUid] = useState<number | null>(null);
+  const [copiedAlertUid, setCopiedAlertUid] = useState<number | null>(null);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
     setError("");
+
     try {
-      const res = await fetch("/api/monitoring/overview");
+      const query =
+        projectFilter === "all"
+          ? ""
+          : `?project=${encodeURIComponent(projectFilter)}`;
+
+      const res = await fetch(`/api/monitoring/sentry-inbox${query}`, {
+        cache: "no-store",
+      });
       const body = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        throw new Error(body.error || "Failed to load monitoring overview");
+        throw new Error(body.error || "Failed to scan Sentry inbox");
       }
-      setOverview(body as MonitoringOverview);
-      setLastUpdated(new Date().toLocaleTimeString());
+
+      setOverview(body as SentryInboxOverview);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load monitoring overview",
+        err instanceof Error ? err.message : "Failed to scan Sentry inbox",
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectFilter]);
 
   useEffect(() => {
     if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
@@ -113,18 +129,62 @@ export default function MonitoringPage() {
     return () => clearInterval(interval);
   }, [overview, loadOverview]);
 
-  const healthTone = useMemo(() => {
-    const status = overview?.health.status ?? "unknown";
-    if (status === "healthy")
-      return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    if (status === "unhealthy") return "bg-red-50 text-red-700 border-red-200";
-    return "bg-amber-50 text-amber-700 border-amber-200";
-  }, [overview]);
+  const alerts = useMemo(() => overview?.alerts || [], [overview]);
+
+  const toggleException = (uid: number) => {
+    setExpandedException((current) => ({
+      ...current,
+      [uid]: !current[uid],
+    }));
+  };
+
+  const copyException = async (uid: number, exceptionText: string) => {
+    try {
+      await navigator.clipboard.writeText(exceptionText);
+      setCopiedUid(uid);
+      setTimeout(() => {
+        setCopiedUid((current) => (current === uid ? null : current));
+      }, 1800);
+    } catch {
+      setError("Failed to copy exception text");
+    }
+  };
+
+  const copyAlert = async (alert: SentryInboxAlert) => {
+    const lines = [
+      `Issue: ${alert.issueKey || "(none)"}`,
+      `Title: ${alert.errorTitle}`,
+      `Message: ${alert.errorMessage || "(none)"}`,
+      `Level: ${alert.level || "(unknown)"}`,
+      `Environment: ${alert.environment || "(unknown)"}`,
+      `Culprit: ${alert.culprit || "(none)"}`,
+      `Method: ${alert.requestMethod || "(none)"}`,
+      `Request URL: ${alert.requestUrl || "(none)"}`,
+      `User IP: ${alert.userIp || "(none)"}`,
+      `Event ID: ${alert.eventId || "(none)"}`,
+      `Sentry URL: ${alert.sentryUrl || "(none)"}`,
+      "",
+      "Exception:",
+      alert.exceptionText || "(none)",
+    ];
+
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopiedAlertUid(alert.uid);
+      setTimeout(() => {
+        setCopiedAlertUid((current) =>
+          current === alert.uid ? null : current,
+        );
+      }, 1800);
+    } catch {
+      setError("Failed to copy alert");
+    }
+  };
 
   if (authLoading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+        <Loader2 className="h-10 w-10 animate-spin text-red-500" />
       </div>
     );
   }
@@ -132,7 +192,7 @@ export default function MonitoringPage() {
   if (user.role !== "SUPER_ADMIN") {
     return (
       <DashboardLayout>
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+        <div className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Only super admins can access monitoring.
         </div>
       </DashboardLayout>
@@ -142,234 +202,235 @@ export default function MonitoringPage() {
   return (
     <DashboardLayout>
       <div className="w-full space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="flex items-center gap-2 text-3xl font-bold text-gray-900 dark:text-white">
-              <Radar className="h-7 w-7 text-indigo-500" /> Monitoring
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-gray-400">
-              Super admin visibility for app health, audit activity, and
-              external observability tooling.
-            </p>
-          </div>
+        <header className="border-b border-gray-200 pb-4 dark:border-gray-800">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500 dark:text-gray-400">
+                Monitoring
+              </p>
+              <h1 className="mt-2 text-3xl font-bold text-gray-950 dark:text-white">
+                Sentry Error Alerts
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm text-gray-600 dark:text-gray-400">
+                GitHub-style alert list from Sentry emails with exception and
+                request context.
+              </p>
+            </div>
 
+            <button
+              type="button"
+              onClick={() => {
+                void loadOverview();
+              }}
+              className="inline-flex items-center gap-2 border border-red-600 bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 dark:border-red-500 dark:bg-red-500 dark:hover:bg-red-600"
+            >
+              <RefreshCcw className="h-4 w-4" /> Refresh
+            </button>
+          </div>
+        </header>
+
+        <MonitoringTabs alertCount={overview?.foundCount ?? 0} />
+
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              void loadOverview();
-            }}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+            onClick={() => setProjectFilter("all")}
+            className={`border px-3 py-1.5 text-sm font-medium ${
+              projectFilter === "all"
+                ? "border-red-600 bg-red-600 text-white"
+                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            }`}
           >
-            <RefreshCcw className="h-4 w-4" /> Refresh
+            All projects (
+            {overview?.projects?.reduce((sum, item) => sum + item.count, 0) ||
+              0}
+            )
           </button>
+          {(overview?.projects || []).map((project) => (
+            <button
+              key={project.key}
+              type="button"
+              onClick={() => setProjectFilter(project.key)}
+              className={`border px-3 py-1.5 text-sm font-medium ${
+                projectFilter === project.key
+                  ? "border-red-600 bg-red-600 text-white"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+              }`}
+            >
+              {project.label} ({project.count})
+            </button>
+          ))}
         </div>
 
         {error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <div className="border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">
             {error}
           </div>
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  App health
-                </p>
-                <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-                  {overview?.health.status || (loading ? "Loading" : "Unknown")}
-                </p>
-              </div>
-              <div
-                className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-semibold",
-                  healthTone,
-                )}
+        <section className="border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+          <div className="divide-y divide-gray-200 dark:divide-gray-800">
+            {alerts.map((alert) => (
+              <article
+                key={alert.uid}
+                className={`border-l-4 px-4 py-4 ${levelTone(alert.level).row}`}
               >
-                {overview?.health.status || "unknown"}
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {alert.issueKey ? (
+                        <span className="border border-gray-300 bg-gray-50 px-2 py-0.5 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                          {alert.issueKey}
+                        </span>
+                      ) : null}
+                      {alert.level ? (
+                        <span
+                          className={`border px-2 py-0.5 text-xs font-semibold uppercase ${levelTone(alert.level).chip}`}
+                        >
+                          {alert.level}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <h3 className="mt-2 text-base font-semibold text-gray-950 dark:text-white">
+                      {alert.errorTitle}
+                    </h3>
+
+                    {alert.errorMessage ? (
+                      <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                        {alert.errorMessage}
+                      </p>
+                    ) : null}
+
+                    {(alert.exceptionType ||
+                      alert.requestMethod ||
+                      alert.requestUrl) && (
+                      <p className="mt-2 text-xs font-medium text-gray-700 dark:text-gray-300">
+                        {alert.exceptionType
+                          ? `${alert.exceptionType}`
+                          : "Exception"}
+                        {alert.requestMethod ? ` • ${alert.requestMethod}` : ""}
+                        {alert.requestUrl ? ` ${alert.requestUrl}` : ""}
+                      </p>
+                    )}
+
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      {alert.environment ? (
+                        <span className="border border-gray-300 bg-gray-50 px-2 py-0.5 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                          env: {alert.environment}
+                        </span>
+                      ) : null}
+                      {alert.culprit ? (
+                        <span className="border border-gray-300 bg-gray-50 px-2 py-0.5 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                          culprit: {alert.culprit}
+                        </span>
+                      ) : null}
+                      {alert.alertRuleId ? (
+                        <span className="border border-gray-300 bg-gray-50 px-2 py-0.5 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                          rule: {alert.alertRuleId}
+                        </span>
+                      ) : null}
+                      {alert.userIp ? (
+                        <span className="border border-gray-300 bg-gray-50 px-2 py-0.5 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                          ip: {alert.userIp}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <p className="mt-2 text-xs text-gray-500">
+                      {alert.date === "unknown"
+                        ? "unknown time"
+                        : formatDate(alert.date)}
+                      {alert.from ? ` | from ${alert.from}` : ""}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-2">
+                    {alert.sentryUrl ? (
+                      <a
+                        href={alert.sentryUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                      >
+                        Open in Sentry <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void copyAlert(alert);
+                      }}
+                      className="inline-flex items-center gap-1 border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      {copiedAlertUid === alert.uid
+                        ? "Copied alert"
+                        : "Copy error"}
+                    </button>
+
+                    {alert.exceptionText ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toggleException(alert.uid);
+                        }}
+                        className="inline-flex items-center gap-1 border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                      >
+                        {expandedException[alert.uid]
+                          ? "Hide exception"
+                          : "Show exception"}
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 transition-transform ${
+                            expandedException[alert.uid] ? "rotate-180" : ""
+                          }`}
+                        />
+                      </button>
+                    ) : null}
+
+                    {alert.exceptionText ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void copyException(
+                            alert.uid,
+                            alert.exceptionText || "",
+                          );
+                        }}
+                        className="inline-flex items-center gap-1 border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                      >
+                        {copiedUid === alert.uid ? "Copied" : "Copy exception"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {alert.exceptionText && expandedException[alert.uid] ? (
+                  <div className="mt-3 border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/60">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Exception
+                    </p>
+                    <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs text-gray-800 dark:text-gray-200">
+                      {alert.exceptionText}
+                    </pre>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+
+            {alerts.length === 0 && !loading ? (
+              <div className="px-4 py-6 text-sm text-gray-500">
+                No Sentry error alerts found in the current scan window.
               </div>
-            </div>
-            <div className="mt-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <Activity className="h-4 w-4" />
-              Last check{" "}
-              {overview ? formatDate(overview.health.timestamp) : "pending"}
-            </div>
-          </div>
+            ) : null}
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Runtime
-            </p>
-            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-              {overview ? formatDuration(overview.health.uptime) : "--"}
-            </p>
-            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
-              {overview?.health.environment || "environment unknown"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Database
-            </p>
-            <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
-              <Database className="h-6 w-6 text-indigo-500" />
-              {overview?.health.database.reachable ? "Reachable" : "Pending"}
-            </div>
-            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
-              {overview
-                ? `${overview.health.database.users} users tracked`
-                : "Loading database status"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Audit feed
-            </p>
-            <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
-              <ShieldCheck className="h-6 w-6 text-emerald-500" />
-              {overview?.auditLogs.length ?? 0}
-            </div>
-            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
-              Recent super-admin events available below
-            </p>
-          </div>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900 lg:col-span-2">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Sentry
-                </h2>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  Error tracking and performance monitoring.
-                </p>
+            {loading ? (
+              <div className="px-4 py-6 text-sm text-gray-500">
+                Running inbox scan...
               </div>
-              <span
-                className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-semibold",
-                  overview?.integrations.sentry.configured
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-amber-200 bg-amber-50 text-amber-700",
-                )}
-              >
-                {overview?.integrations.sentry.configured
-                  ? "Configured"
-                  : "Not configured"}
-              </span>
-            </div>
-
-            <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-              <p>
-                Environment:{" "}
-                {overview?.integrations.sentry.environment || "unknown"}
-              </p>
-              <p>
-                Release: {overview?.integrations.sentry.release || "not set"}
-              </p>
-              <p>
-                Configured via SENTRY_DSN and SENTRY_AUTH_TOKEN in production.
-              </p>
-            </div>
+            ) : null}
           </div>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Recent audit activity
-              </h2>
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                {lastUpdated
-                  ? `Last refreshed ${lastUpdated}`
-                  : "Waiting for data"}
-              </p>
-            </div>
-
-            <a
-              href="/workflows"
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-            >
-              <Workflow className="h-4 w-4" /> Open workflows
-            </a>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center gap-2 p-6 text-sm text-gray-600 dark:text-gray-300">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading monitoring
-              data...
-            </div>
-          ) : overview?.auditLogs.length ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800/60">
-                  <tr>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Action
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Actor
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Entity
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Time
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {overview.auditLogs.map((entry) => (
-                    <tr key={entry.id}>
-                      <td className="px-5 py-4 text-sm font-medium text-gray-900 dark:text-white">
-                        {entry.action}
-                      </td>
-                      <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
-                        {entry.actor?.name || entry.actor?.email || "System"}
-                      </td>
-                      <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
-                        <div>{entry.entityType}</div>
-                        <div className="text-xs text-gray-500">
-                          {entry.entityId}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
-                        {formatDate(entry.createdAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="p-6 text-sm text-gray-500">
-              No audit events found.
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-300">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-500" />
-            <div className="space-y-1">
-              <p className="font-semibold text-gray-900 dark:text-white">
-                What this page covers
-              </p>
-              <p>
-                App health comes from the local health endpoint, audit activity
-                comes from the database, and Sentry shows configuration
-                readiness. Add the Sentry SDK and production environment
-                variables when you want error tracking and release health to
-                light up fully in production.
-              </p>
-            </div>
-          </div>
-        </div>
+        </section>
       </div>
     </DashboardLayout>
   );

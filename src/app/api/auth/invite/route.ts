@@ -141,6 +141,7 @@ export async function POST(request: NextRequest) {
       undefined,
       inviteLink,
       appBaseUrl,
+      role === "CLIENT" ? "CLIENT" : "STAFF",
     );
 
     return NextResponse.json(

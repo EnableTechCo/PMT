@@ -4,10 +4,14 @@ import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
 
+function canManageAutomation(role: Role | undefined) {
+  return role === Role.USER || role === Role.SUPER_ADMIN;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getUserFromRequest(request);
-    if (!session || session.role !== Role.SUPER_ADMIN) {
+    if (!session || !canManageAutomation(session.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -27,14 +31,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getUserFromRequest(request);
-    if (!session || session.role !== Role.SUPER_ADMIN) {
+    if (!session || !canManageAutomation(session.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = await request.json();
     const name = typeof body.name === "string" ? body.name.trim() : "";
-    const trigger =
-      typeof body.trigger === "string" ? body.trigger.trim() : "";
+    const trigger = typeof body.trigger === "string" ? body.trigger.trim() : "";
     const action = typeof body.action === "string" ? body.action.trim() : "";
     if (!name || !trigger || !action) {
       return NextResponse.json(
@@ -48,8 +51,7 @@ export async function POST(request: NextRequest) {
         name,
         trigger,
         action,
-        teamId:
-          typeof body.teamId === "string" ? body.teamId : undefined,
+        teamId: typeof body.teamId === "string" ? body.teamId : undefined,
         enabled: body.enabled !== false,
       },
     });

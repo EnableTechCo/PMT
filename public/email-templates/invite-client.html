@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Enable - Client Invite</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f7fafc;
+            color: #0f172a;
+        }
+
+        .wrapper {
+            width: 100%;
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 32px;
+        }
+
+        .card {
+            background: #0b1220;
+            color: #fff;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .body {
+            padding: 28px;
+        }
+
+        .body p {
+            margin: 0 0 16px 0;
+            color: #cbd5e1;
+            font-size: 15px;
+        }
+
+        .cta {
+            display: inline-block;
+            padding: 12px 22px;
+            background: #ef4444;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .muted {
+            color: #94a3b8;
+            font-size: 13px;
+        }
+
+        .footer {
+            padding: 18px 28px;
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrapper">
+        <div class="card">
+            <div class="body">
+                <p>Hello <strong><!-- RECIPIENT_NAME --></strong>,</p>
+                <p>You have been invited to collaborate in <strong>Enable Project Management Tool</strong> as a client.
+                </p>
+                <p>You can review deliverables, share feedback, upload requested documents, and respond to team requests
+                    directly in your workspace.</p>
+                <p>Click the button below to accept the invitation and complete your account setup.</p>
+                <p style="margin-top:18px">
+                    <a class="cta" href="<!-- INVITE_LINK -->">Accept Invite</a>
+                </p>
+                <p class="muted" style="margin-top:18px">This link expires in 24 hours. If you did not expect this
+                    invitation, you can ignore this message.</p>
+            </div>
+            <div class="footer">
+                Enable Project Management Tool
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

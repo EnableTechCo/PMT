@@ -68,3 +68,59 @@ export interface Client {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export const ClientObligationStatus = {
+  PENDING: "PENDING",
+  SUBMITTED: "SUBMITTED",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  OVERDUE: "OVERDUE",
+} as const;
+
+export type ClientObligationStatus =
+  (typeof ClientObligationStatus)[keyof typeof ClientObligationStatus];
+
+export interface ClientObligation {
+  id: string;
+  ticketId: string;
+  title: string;
+  description: string | null;
+  status: ClientObligationStatus;
+  dueAt: Date | null;
+  submittedAt: Date | null;
+  reviewedAt: Date | null;
+  evidenceUrl: string | null;
+  evidenceNote: string | null;
+  createdById: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const ClientFeedbackStatus = {
+  NEW: "NEW",
+  TRIAGED: "TRIAGED",
+  ASSIGNED: "ASSIGNED",
+  RESOLVED: "RESOLVED",
+} as const;
+
+export type ClientFeedbackStatus =
+  (typeof ClientFeedbackStatus)[keyof typeof ClientFeedbackStatus];
+
+export interface ClientFeedback {
+  id: string;
+  source: string;
+  status: ClientFeedbackStatus;
+  fromEmail: string;
+  subject: string;
+  body: string;
+  clientId: string | null;
+  ticketId: string | null;
+  teamId: string | null;
+  assignedToId: string | null;
+  assignedAt: Date | null;
+  attachmentJson: string | null;
+  rawPayload: string | null;
+  receivedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}

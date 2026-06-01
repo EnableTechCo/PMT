@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthorizedUser } from "@/lib/ticketAccess";
+import { Role } from "@/lib/db-types";
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,10 +10,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const isSuperAdmin = user.role === Role.SUPER_ADMIN;
+
     const items = await db.notification.findMany({
-      where: { userId: user.id },
+      where: isSuperAdmin ? undefined : { userId: user.id },
       orderBy: { createdAt: "desc" },
-      take: 80,
+      take: isSuperAdmin ? 200 : 80,
     });
 
     return NextResponse.json(items);
@@ -32,6 +35,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const isSuperAdmin = user.role === Role.SUPER_ADMIN;
+
     const body = (await request.json()) as {
       markAllRead?: boolean;
       ids?: string[];
@@ -39,7 +44,9 @@ export async function PATCH(request: NextRequest) {
 
     if (body.markAllRead) {
       await db.notification.updateMany({
-        where: { userId: user.id, read: false },
+        where: isSuperAdmin
+          ? { read: false }
+          : { userId: user.id, read: false },
         data: { read: true },
       });
       return NextResponse.json({ ok: true });
@@ -47,7 +54,9 @@ export async function PATCH(request: NextRequest) {
 
     if (Array.isArray(body.ids) && body.ids.length > 0) {
       await db.notification.updateMany({
-        where: { userId: user.id, id: { in: body.ids } },
+        where: isSuperAdmin
+          ? { id: { in: body.ids } }
+          : { userId: user.id, id: { in: body.ids } },
         data: { read: true },
       });
       return NextResponse.json({ ok: true });

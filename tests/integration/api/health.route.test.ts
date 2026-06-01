@@ -26,11 +26,16 @@ describe("GET /api/health", () => {
 
   it("returns unhealthy when database check fails", async () => {
     countUsersMock.mockRejectedValue(new Error("db down"));
+    const consoleErrorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
 
     const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(503);
     expect(body.status).toBe("unhealthy");
+
+    consoleErrorSpy.mockRestore();
   });
 });

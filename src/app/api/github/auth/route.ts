@@ -3,6 +3,7 @@ import { getUserFromRequest } from "@/lib/auth";
 import { Octokit } from "octokit";
 import { getGithubClient, getSharedGithubToken } from "@/lib/github";
 import { updateUserGithubToken } from "@/lib/user-store";
+import { Role } from "@/lib/db-types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,7 +53,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (getSharedGithubToken()) {
+    const forceUserTokenReset =
+      request.nextUrl.searchParams.get("forceUserToken") === "1";
+
+    if (getSharedGithubToken() && !forceUserTokenReset) {
       return NextResponse.json(
         {
           error:
@@ -62,9 +66,16 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    if (forceUserTokenReset && sessionUser.role !== Role.SUPER_ADMIN) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     await updateUserGithubToken(sessionUser.id, null);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      mode: forceUserTokenReset ? "force-user-token-reset" : "disconnect",
+    });
   } catch (_error) {
     return NextResponse.json(
       { error: "Internal server error" },

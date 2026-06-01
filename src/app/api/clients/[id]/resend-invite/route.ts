@@ -81,6 +81,7 @@ export async function POST(
       undefined,
       "/auth/invite?token=",
       appBaseUrl,
+      "CLIENT",
     );
 
     await db.client.update({

@@ -179,6 +179,7 @@ export async function POST(request: NextRequest) {
           undefined,
           "/auth/invite?token=",
           appBaseUrl,
+          "CLIENT",
         );
       } catch (inviteError) {
         console.error("Client invite email error:", inviteError);

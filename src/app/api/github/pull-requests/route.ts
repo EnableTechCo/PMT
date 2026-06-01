@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { getGithubClient } from "@/lib/github";
+import { createNotification } from "@/lib/ticketActivity";
 
 // GET /api/github/pull-requests?owner=foo&repo=bar
 // Fetches pull requests from GitHub for the specified repo
@@ -63,7 +64,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user can access ticket
-    const ticket = await db.ticket.findUnique({ where: { id: ticketId } });
+    const ticket = await db.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        title: true,
+        creatorId: true,
+        assigneeId: true,
+      },
+    });
     if (!ticket) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
     }
@@ -88,6 +97,23 @@ export async function POST(request: NextRequest) {
         state,
       },
     });
+
+    if (state === "open") {
+      const targets = new Set<string>();
+      if (ticket.creatorId) targets.add(ticket.creatorId);
+      if (ticket.assigneeId) targets.add(ticket.assigneeId);
+      targets.delete(sessionUser.id);
+
+      for (const userId of targets) {
+        await createNotification({
+          userId,
+          type: "PR_READY_FOR_REVIEW",
+          title: `PR ready for review: ${title}`,
+          body: url,
+          ticketId,
+        });
+      }
+    }
 
     return NextResponse.json(pr);
   } catch (error: any) {

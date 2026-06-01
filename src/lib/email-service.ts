@@ -26,6 +26,8 @@ type SendEmailArgs = {
   text: string;
 };
 
+type InviteAudience = "STAFF" | "CLIENT";
+
 function getEmailProvider(): EmailProvider {
   return "resend";
 }
@@ -235,25 +237,37 @@ export async function sendAdminInviteEmail(
   teamName?: string,
   invitePathOrUrl: string = "/auth/invite?token=",
   appBaseUrl?: string,
+  inviteAudience: InviteAudience = "STAFF",
 ) {
   const inviteLink = buildInviteLink(inviteToken, invitePathOrUrl, appBaseUrl);
 
-  let htmlContent = await loadTemplate("invite.html", {
+  const isClientInvite = inviteAudience === "CLIENT";
+  const templateName = isClientInvite ? "invite-client.html" : "invite.html";
+  const subject = isClientInvite
+    ? "You have been invited to collaborate in Enable Project Management"
+    : "You've been invited to join Enable Project Management";
+  const text = isClientInvite
+    ? `You've been invited to collaborate in Enable Project Management as a client. Visit: ${inviteLink}`
+    : `You've been invited to join Enable Project Management. Visit: ${inviteLink}`;
+
+  let htmlContent = await loadTemplate(templateName, {
     RECIPIENT_NAME: recipientName || "",
     INVITE_LINK: inviteLink,
     TEAM_NAME: teamName || "",
   });
 
   if (!htmlContent) {
-    htmlContent = `Hi ${recipientName}, you have been invited to join Enable. Accept here: ${inviteLink}`;
+    htmlContent = isClientInvite
+      ? `Hi ${recipientName}, you have been invited to collaborate in Enable Project Management as a client. Accept here: ${inviteLink}`
+      : `Hi ${recipientName}, you have been invited to join Enable. Accept here: ${inviteLink}`;
   }
 
   try {
     return await sendEmail({
       to: recipientEmail,
-      subject: "You've been invited to join Enable Project Management",
+      subject,
       html: htmlContent,
-      text: `You've been invited to join Enable Project Management. Visit: ${inviteLink}`,
+      text,
     });
   } catch (error) {
     console.error("✗ Failed to send invite email:", error);

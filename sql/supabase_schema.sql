@@ -255,6 +255,41 @@ CREATE TABLE IF NOT EXISTS "Notification" (
   "createdAt" timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS "ClientObligation" (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "ticketId" uuid NOT NULL REFERENCES "Ticket"(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  description text,
+  status text NOT NULL DEFAULT 'PENDING',
+  "dueAt" timestamptz,
+  "submittedAt" timestamptz,
+  "reviewedAt" timestamptz,
+  "evidenceUrl" text,
+  "evidenceNote" text,
+  "createdById" uuid NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+  "createdAt" timestamptz NOT NULL DEFAULT now(),
+  "updatedAt" timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS "ClientFeedback" (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  source text NOT NULL DEFAULT 'PORTAL',
+  status text NOT NULL DEFAULT 'NEW',
+  "fromEmail" text NOT NULL,
+  subject text NOT NULL,
+  body text NOT NULL,
+  "clientId" uuid REFERENCES "Client"(id) ON DELETE SET NULL,
+  "ticketId" uuid REFERENCES "Ticket"(id) ON DELETE SET NULL,
+  "teamId" uuid REFERENCES "Team"(id) ON DELETE SET NULL,
+  "assignedToId" uuid REFERENCES "User"(id) ON DELETE SET NULL,
+  "assignedAt" timestamptz,
+  "attachmentJson" text,
+  "rawPayload" text,
+  "receivedAt" timestamptz NOT NULL DEFAULT now(),
+  "createdAt" timestamptz NOT NULL DEFAULT now(),
+  "updatedAt" timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS "SavedView" (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "userId" uuid NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
@@ -328,6 +363,13 @@ CREATE INDEX IF NOT EXISTS idx_activity_ticket ON "TicketActivity"("ticketId");
 CREATE INDEX IF NOT EXISTS idx_activity_actor ON "TicketActivity"("actorId");
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON "AuditLog"("actorId");
 CREATE INDEX IF NOT EXISTS idx_notification_user ON "Notification"("userId");
+CREATE INDEX IF NOT EXISTS idx_client_obligation_ticket ON "ClientObligation"("ticketId");
+CREATE INDEX IF NOT EXISTS idx_client_obligation_status ON "ClientObligation"(status);
+CREATE INDEX IF NOT EXISTS idx_client_feedback_status ON "ClientFeedback"(status);
+CREATE INDEX IF NOT EXISTS idx_client_feedback_received ON "ClientFeedback"("receivedAt");
+CREATE INDEX IF NOT EXISTS idx_client_feedback_team ON "ClientFeedback"("teamId");
+CREATE INDEX IF NOT EXISTS idx_client_feedback_ticket ON "ClientFeedback"("ticketId");
+CREATE INDEX IF NOT EXISTS idx_client_feedback_assignee ON "ClientFeedback"("assignedToId");
 CREATE INDEX IF NOT EXISTS idx_saved_view_user ON "SavedView"("userId");
 CREATE INDEX IF NOT EXISTS idx_passwordreset_user ON "PasswordReset"("userId");
 CREATE INDEX IF NOT EXISTS idx_passwordreset_token ON "PasswordReset"(token);

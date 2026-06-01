@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,7 +27,6 @@ import {
   Handshake,
   Bell,
   FileText,
-  Workflow,
   Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -50,6 +49,13 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
+type NavItem = {
+  name: string;
+  href: string;
+  icon: any;
+  children?: NavItem[];
+};
+
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -59,6 +65,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [mobileWorkspaceOpen, setMobileWorkspaceOpen] = useState(false);
   const [desktopWorkspaceOpen, setDesktopWorkspaceOpen] = useState(false);
+  const [mobileNavGroups, setMobileNavGroups] = useState<
+    Record<string, boolean>
+  >({});
+  const [desktopNavGroups, setDesktopNavGroups] = useState<
+    Record<string, boolean>
+  >({});
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -74,39 +86,69 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     loading: teamNavLoading,
   } = useTeam();
 
-  const navigation =
-    user?.role === "SUPER_ADMIN"
-      ? [
-          { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-          { name: "Executive", href: "/executive", icon: BarChart3 },
-          { name: "Clients", href: "/clients", icon: Handshake },
-          { name: "Workload", href: "/workload", icon: Briefcase },
-          { name: "Tickets", href: "/tickets", icon: Ticket },
-          { name: "Docs", href: "/docs", icon: FileText },
-          { name: "Teams", href: "/teams", icon: Users2 },
-          { name: "Projects", href: "/projects", icon: FolderKanban },
-          { name: "Monitoring", href: "/monitoring", icon: Activity },
-          { name: "Workflows", href: "/workflows", icon: Workflow },
-        ]
-      : [
-          { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-          { name: "Clients", href: "/clients", icon: Handshake },
-          { name: "Workload", href: "/workload", icon: Briefcase },
-          { name: "Tickets", href: "/tickets", icon: Ticket },
-          { name: "Docs", href: "/docs", icon: FileText },
-          { name: "Projects", href: "/projects", icon: FolderKanban },
-        ];
+  const navigation: NavItem[] = useMemo(
+    () =>
+      user?.role === "SUPER_ADMIN"
+        ? [
+            { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+            { name: "Executive", href: "/executive", icon: BarChart3 },
+            { name: "Clients", href: "/clients", icon: Handshake },
+            { name: "Feedback", href: "/feedback", icon: Bell },
+            { name: "Workload", href: "/workload", icon: Briefcase },
+            { name: "Tickets", href: "/tickets", icon: Ticket },
+            { name: "Docs", href: "/docs", icon: FileText },
+            { name: "Projects", href: "/projects", icon: FolderKanban },
+            { name: "Teams", href: "/teams", icon: Users2 },
+            { name: "Monitoring", href: "/monitoring", icon: Activity },
+          ]
+        : [
+            { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+            { name: "Clients", href: "/clients", icon: Handshake },
+            { name: "Feedback", href: "/feedback", icon: Bell },
+            { name: "Workload", href: "/workload", icon: Briefcase },
+            { name: "Tickets", href: "/tickets", icon: Ticket },
+            { name: "Docs", href: "/docs", icon: FileText },
+            { name: "Projects", href: "/projects", icon: FolderKanban },
+          ],
+    [user?.role],
+  );
   const quickActions = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Tickets", href: "/tickets", icon: Ticket },
+    { name: "Feedback", href: "/feedback", icon: Bell },
     { name: "Workload", href: "/workload", icon: Briefcase },
     { name: "Projects", href: "/projects", icon: FolderKanban },
   ];
 
   const pathname = usePathname();
+
+  const isNavActive = useCallback(
+    (item: NavItem): boolean => {
+      if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
+        return true;
+      }
+      return item.children?.some((child) => isNavActive(child)) ?? false;
+    },
+    [pathname],
+  );
+
+  const flatNavigation = useMemo(() => {
+    const items: NavItem[] = [];
+    const visit = (nodes: NavItem[]) => {
+      for (const node of nodes) {
+        items.push(node);
+        if (node.children?.length) {
+          visit(node.children);
+        }
+      }
+    };
+    visit(navigation);
+    return items;
+  }, [navigation]);
+
   const isClient = user?.role === "CLIENT";
   const breadcrumbLabel =
-    navigation
+    flatNavigation
       .slice()
       .sort((a, b) => b.href.length - a.href.length)
       .find(
@@ -141,6 +183,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [user, isClient, loadNotifications]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+  const monitoringAlertCount = notifications.filter((n) => {
+    if (n.read) return false;
+    return (
+      n.type === "PR_READY_FOR_REVIEW" ||
+      n.type === "MONITORING_ERROR" ||
+      n.type.startsWith("MONITORING_")
+    );
+  }).length;
 
   const markNotificationsRead = async (ids: string[]) => {
     if (ids.length === 0) return;
@@ -246,6 +296,88 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <nav className="flex-1 space-y-0.5 p-3">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
+              const isExpanded =
+                mobileNavGroups[item.name] ??
+                item.children?.some(
+                  (child) =>
+                    pathname === child.href ||
+                    pathname.startsWith(`${child.href}/`),
+                ) ??
+                false;
+
+              if (item.children?.length) {
+                return (
+                  <div key={item.name} className="mb-1">
+                    <div
+                      className={cn(
+                        "group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out",
+                        isNavActive(item)
+                          ? "bg-brand-600/[0.08] text-brand-800 ring-1 ring-brand-500/15 dark:bg-brand-600/10 dark:text-brand-200 dark:ring-brand-400/20"
+                          : "text-gray-600 hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
+                      )}
+                    >
+                      <item.icon
+                        className={cn(
+                          "h-[18px] w-[18px] shrink-0",
+                          isNavActive(item)
+                            ? "text-brand-600 dark:text-brand-400"
+                            : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
+                        )}
+                      />
+                      <Link
+                        href={item.href}
+                        className="flex-1 text-left"
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        {item.name}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMobileNavGroups((prev) => ({
+                            ...prev,
+                            [item.name]: !isExpanded,
+                          }))
+                        }
+                        className="rounded-md p-1 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-gray-500" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-gray-500" />
+                        )}
+                      </button>
+                    </div>
+
+                    {isExpanded ? (
+                      <div className="mt-1 space-y-1 pl-9">
+                        {item.children.map((child) => {
+                          const isChildActive =
+                            pathname === child.href ||
+                            pathname.startsWith(`${child.href}/`);
+                          return (
+                            <Link
+                              key={child.name}
+                              href={child.href}
+                              className={cn(
+                                "flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium",
+                                isChildActive
+                                  ? "bg-brand-600/[0.12] text-brand-800 dark:bg-brand-600/15 dark:text-brand-200"
+                                  : "text-gray-600 hover:bg-white/80 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
+                              )}
+                              onClick={() => setSidebarOpen(false)}
+                            >
+                              <ChevronRight className="h-3.5 w-3.5" />
+                              <span>{child.name}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
+
               return (
                 <Link
                   key={item.name}
@@ -266,7 +398,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
                     )}
                   />
-                  <span>{item.name}</span>
+                  <span className="flex-1 text-left">{item.name}</span>
+                  {item.name === "Monitoring" && monitoringAlertCount > 0 ? (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {monitoringAlertCount > 99 ? "99+" : monitoringAlertCount}
+                    </span>
+                  ) : null}
                 </Link>
               );
             })}
@@ -421,6 +558,83 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <nav className="flex-1 space-y-0.5 p-3">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
+              const isExpanded =
+                desktopNavGroups[item.name] ??
+                item.children?.some(
+                  (child) =>
+                    pathname === child.href ||
+                    pathname.startsWith(`${child.href}/`),
+                ) ??
+                false;
+
+              if (item.children?.length) {
+                return (
+                  <div key={item.name} className="mb-1">
+                    <div
+                      className={cn(
+                        "group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out",
+                        isNavActive(item)
+                          ? "bg-brand-600/[0.08] text-brand-800 ring-1 ring-brand-500/15 dark:bg-brand-600/10 dark:text-brand-200 dark:ring-brand-400/20"
+                          : "text-gray-600 hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
+                      )}
+                    >
+                      <item.icon
+                        className={cn(
+                          "h-[18px] w-[18px] shrink-0",
+                          isNavActive(item)
+                            ? "text-brand-600 dark:text-brand-400"
+                            : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
+                        )}
+                      />
+                      <Link href={item.href} className="flex-1 text-left">
+                        {item.name}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDesktopNavGroups((prev) => ({
+                            ...prev,
+                            [item.name]: !isExpanded,
+                          }))
+                        }
+                        className="rounded-md p-1 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-gray-500" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-gray-500" />
+                        )}
+                      </button>
+                    </div>
+
+                    {isExpanded ? (
+                      <div className="mt-1 space-y-1 pl-9">
+                        {item.children.map((child) => {
+                          const isChildActive =
+                            pathname === child.href ||
+                            pathname.startsWith(`${child.href}/`);
+                          return (
+                            <Link
+                              key={child.name}
+                              href={child.href}
+                              className={cn(
+                                "flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium",
+                                isChildActive
+                                  ? "bg-brand-600/[0.12] text-brand-800 dark:bg-brand-600/15 dark:text-brand-200"
+                                  : "text-gray-600 hover:bg-white/80 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
+                              )}
+                            >
+                              <ChevronRight className="h-3.5 w-3.5" />
+                              <span>{child.name}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
+
               return (
                 <Link
                   key={item.name}
@@ -440,7 +654,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
                     )}
                   />
-                  <span>{item.name}</span>
+                  <span className="flex-1 text-left">{item.name}</span>
+                  {item.name === "Monitoring" && monitoringAlertCount > 0 ? (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {monitoringAlertCount > 99 ? "99+" : monitoringAlertCount}
+                    </span>
+                  ) : null}
                 </Link>
               );
             })}

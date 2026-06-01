@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
       team?.name,
       inviteLink,
       appBaseUrl,
+      selectedRole === Role.CLIENT ? "CLIENT" : "STAFF",
     );
 
     return NextResponse.json({

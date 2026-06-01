@@ -3,6 +3,10 @@ import { getUserFromRequest } from "@/lib/auth";
 import { getGithubClient } from "@/lib/github";
 import { Role } from "@/lib/db-types";
 
+function canManageWorkflows(role: Role | undefined) {
+  return role === Role.USER || role === Role.SUPER_ADMIN;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const sessionUser = await getUserFromRequest(request);
@@ -10,7 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (sessionUser.role !== Role.SUPER_ADMIN) {
+    if (!canManageWorkflows(sessionUser.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -68,7 +72,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (sessionUser.role !== Role.SUPER_ADMIN) {
+    if (!canManageWorkflows(sessionUser.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

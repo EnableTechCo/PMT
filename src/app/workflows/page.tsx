@@ -2,14 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { MonitoringTabs } from "@/components/MonitoringTabs";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  CheckCircle2,
+  Circle,
+  Clock3,
+  ExternalLink,
   Loader2,
   Play,
   RotateCcw,
   Square,
-  ExternalLink,
   Workflow,
+  XCircle,
 } from "lucide-react";
 
 type GithubRepo = {
@@ -41,6 +46,19 @@ type GithubRun = {
   updated_at: string;
 };
 
+function statusIcon(status: string, conclusion: string | null) {
+  if (status === "completed") {
+    if (conclusion === "success") {
+      return <CheckCircle2 className="h-4 w-4 text-emerald-600" />;
+    }
+    if (conclusion === "cancelled") {
+      return <Circle className="h-4 w-4 text-gray-500" />;
+    }
+    return <XCircle className="h-4 w-4 text-rose-600" />;
+  }
+  return <Clock3 className="h-4 w-4 text-amber-600" />;
+}
+
 export default function WorkflowsPage() {
   const { user, loading: authLoading } = useAuth();
   const [repos, setRepos] = useState<GithubRepo[]>([]);
@@ -61,6 +79,8 @@ export default function WorkflowsPage() {
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const canManageWorkflows =
+    user?.role === "USER" || user?.role === "SUPER_ADMIN";
 
   const runByWorkflow = useMemo(() => {
     const map = new Map<number, GithubRun[]>();
@@ -150,9 +170,9 @@ export default function WorkflowsPage() {
   }, [owner, repo]);
 
   useEffect(() => {
-    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+    if (authLoading || !canManageWorkflows) return;
     void loadRepos();
-  }, [authLoading, user, loadRepos]);
+  }, [authLoading, canManageWorkflows, loadRepos]);
 
   useEffect(() => {
     if (!owner || !repo) return;
@@ -228,11 +248,11 @@ export default function WorkflowsPage() {
     );
   }
 
-  if (user.role !== "SUPER_ADMIN") {
+  if (!canManageWorkflows) {
     return (
       <DashboardLayout>
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
-          Only super admins can access workflow orchestration.
+        <div className="border border-amber-200 bg-amber-50 p-4 text-amber-900">
+          Only admin and super admin users can access workflow orchestration.
         </div>
       </DashboardLayout>
     );
@@ -241,17 +261,18 @@ export default function WorkflowsPage() {
   return (
     <DashboardLayout>
       <div className="w-full space-y-6">
-        <div>
+        <div className="border-b border-gray-200 pb-4 dark:border-gray-800">
           <h1 className="flex items-center gap-2 text-3xl font-bold text-gray-900 dark:text-white">
             <Workflow className="h-7 w-7 text-indigo-500" /> GitHub Workflows
           </h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Super admin control panel to dispatch, rerun, and cancel GitHub
-            Actions workflows.
+            GitHub Actions-style workflow and run feed with direct run controls.
           </p>
         </div>
 
-        <div className="grid gap-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 md:grid-cols-4">
+        <MonitoringTabs />
+
+        <div className="grid gap-4 border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 md:grid-cols-4">
           <div>
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
               Repository
@@ -267,7 +288,7 @@ export default function WorkflowsPage() {
                 );
                 setRef(found?.default_branch || "main");
               }}
-              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+              className="mt-1 w-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
               disabled={loadingRepos || repos.length === 0}
             >
               {repos.map((r) => (
@@ -288,7 +309,7 @@ export default function WorkflowsPage() {
             <input
               value={owner}
               onChange={(e) => setOwner(e.target.value.trim())}
-              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+              className="mt-1 w-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
               placeholder="org-or-user"
             />
           </div>
@@ -300,7 +321,7 @@ export default function WorkflowsPage() {
             <input
               value={repo}
               onChange={(e) => setRepo(e.target.value.trim())}
-              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+              className="mt-1 w-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
               placeholder="repository-name"
             />
           </div>
@@ -312,7 +333,7 @@ export default function WorkflowsPage() {
             <input
               value={ref}
               onChange={(e) => setRef(e.target.value.trim())}
-              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+              className="mt-1 w-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
               placeholder="main"
             />
           </div>
@@ -323,7 +344,7 @@ export default function WorkflowsPage() {
               onClick={() => {
                 void loadRepos();
               }}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+              className="border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               Refresh Repos
             </button>
@@ -332,7 +353,7 @@ export default function WorkflowsPage() {
               onClick={() => {
                 void loadWorkflows();
               }}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50 dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
               disabled={loadingWorkflows || !owner || !repo}
             >
               {loadingWorkflows ? "Loading..." : "Refresh Workflows"}
@@ -342,7 +363,7 @@ export default function WorkflowsPage() {
                 href={`https://github.com/${selectedRepo.full_name}/actions`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                className="inline-flex items-center gap-1 border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 Open Actions <ExternalLink className="h-4 w-4" />
               </a>
@@ -351,18 +372,18 @@ export default function WorkflowsPage() {
         </div>
 
         {error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <div className="border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             {error}
           </div>
         ) : null}
 
         {message ? (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+          <div className="border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
             {message}
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <div className="overflow-hidden border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
           <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
               Workflows
@@ -386,77 +407,87 @@ export default function WorkflowsPage() {
               {workflows.map((wf) => {
                 const latest = (runByWorkflow.get(wf.id) ?? [])[0];
                 return (
-                  <li key={wf.id} className="p-4">
+                  <li key={wf.id} className="px-4 py-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          {wf.name}
-                        </p>
-                        <p className="text-xs text-gray-500">{wf.path}</p>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          {latest ? (
+                            statusIcon(latest.status, latest.conclusion)
+                          ) : (
+                            <Circle className="h-4 w-4 text-gray-400" />
+                          )}
+                          <p className="truncate font-medium text-gray-900 dark:text-white">
+                            {wf.name}
+                          </p>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">{wf.path}</p>
                         <p className="mt-1 text-xs text-gray-500">
-                          State: {wf.state}
+                          {latest
+                            ? `Run #${latest.run_number} • ${latest.status}${latest.conclusion ? ` (${latest.conclusion})` : ""} • ${latest.head_branch || "-"}`
+                            : `State: ${wf.state}`}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Updated: {new Date(wf.updated_at).toLocaleString()}
                         </p>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void runWorkflow(wf.id);
-                        }}
-                        disabled={runningWorkflowId === wf.id}
-                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-                      >
-                        {runningWorkflowId === wf.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                        Run
-                      </button>
-                    </div>
-
-                    {latest ? (
-                      <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs dark:border-gray-700 dark:bg-gray-800/50">
-                        <div className="flex flex-wrap items-center gap-3 text-gray-600 dark:text-gray-300">
-                          <span>Latest run #{latest.run_number}</span>
-                          <span>Status: {latest.status}</span>
-                          <span>Conclusion: {latest.conclusion || "n/a"}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {latest ? (
                           <a
                             href={latest.html_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-indigo-600 hover:underline dark:text-indigo-300"
+                            className="inline-flex items-center gap-1 border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
                           >
-                            View <ExternalLink className="h-3 w-3" />
+                            Open run <ExternalLink className="h-3 w-3" />
                           </a>
+                        ) : null}
 
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void runWorkflow(wf.id);
+                          }}
+                          disabled={runningWorkflowId === wf.id}
+                          className="inline-flex items-center gap-1 border border-gray-900 bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-60 dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+                        >
+                          {runningWorkflowId === wf.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                          Run
+                        </button>
+
+                        {latest ? (
                           <button
                             type="button"
                             onClick={() => {
                               void actOnRun(latest.id, "rerun");
                             }}
                             disabled={actingRunId === latest.id}
-                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-white dark:border-gray-600 dark:hover:bg-gray-700"
+                            className="inline-flex items-center gap-1 border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
                           >
-                            <RotateCcw className="h-3 w-3" /> Rerun
+                            <RotateCcw className="h-4 w-4" /> Rerun
                           </button>
+                        ) : null}
 
-                          {(latest.status === "queued" ||
-                            latest.status === "in_progress") && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void actOnRun(latest.id, "cancel");
-                              }}
-                              disabled={actingRunId === latest.id}
-                              className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-950/40"
-                            >
-                              <Square className="h-3 w-3" /> Cancel
-                            </button>
-                          )}
-                        </div>
+                        {latest &&
+                        (latest.status === "queued" ||
+                          latest.status === "in_progress") ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void actOnRun(latest.id, "cancel");
+                            }}
+                            disabled={actingRunId === latest.id}
+                            className="inline-flex items-center gap-1 border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-950/40"
+                          >
+                            <Square className="h-4 w-4" /> Cancel
+                          </button>
+                        ) : null}
                       </div>
-                    ) : null}
+                    </div>
                   </li>
                 );
               })}
@@ -464,7 +495,7 @@ export default function WorkflowsPage() {
           )}
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <div className="overflow-hidden border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
           <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
               Recent Runs
@@ -479,94 +510,67 @@ export default function WorkflowsPage() {
               No workflow runs yet for this repository.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800/40">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
-                      Workflow
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
-                      Run
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
-                      Branch
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
-                      Conclusion
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
-                      Started
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {runs.map((run) => (
-                    <tr key={run.id}>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">
-                        {workflowNameById.get(run.workflow_id) || run.name}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                        #{run.run_number}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                        {run.head_branch || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                        {run.status}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                        {run.conclusion || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                        {new Date(run.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <a
-                            href={run.html_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-                          >
-                            Open <ExternalLink className="h-3 w-3" />
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void actOnRun(run.id, "rerun");
-                            }}
-                            disabled={actingRunId === run.id}
-                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-                          >
-                            <RotateCcw className="h-3 w-3" /> Rerun
-                          </button>
-                          {(run.status === "queued" ||
-                            run.status === "in_progress") && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void actOnRun(run.id, "cancel");
-                              }}
-                              disabled={actingRunId === run.id}
-                              className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-950/40"
-                            >
-                              <Square className="h-3 w-3" /> Cancel
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+              {runs.map((run) => (
+                <li key={run.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        {statusIcon(run.status, run.conclusion)}
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {workflowNameById.get(run.workflow_id) || run.name}
+                        </p>
+                        <span className="text-xs text-gray-500">
+                          #{run.run_number}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {run.head_branch || "-"} • {run.status}
+                        {run.conclusion ? ` (${run.conclusion})` : ""}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Started {new Date(run.created_at).toLocaleString()} •
+                        Updated {new Date(run.updated_at).toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href={run.html_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                      >
+                        Open <ExternalLink className="h-3 w-3" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void actOnRun(run.id, "rerun");
+                        }}
+                        disabled={actingRunId === run.id}
+                        className="inline-flex items-center gap-1 border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                      >
+                        <RotateCcw className="h-3 w-3" /> Rerun
+                      </button>
+                      {(run.status === "queued" ||
+                        run.status === "in_progress") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void actOnRun(run.id, "cancel");
+                          }}
+                          disabled={actingRunId === run.id}
+                          className="inline-flex items-center gap-1 border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-950/40"
+                        >
+                          <Square className="h-3 w-3" /> Cancel
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>

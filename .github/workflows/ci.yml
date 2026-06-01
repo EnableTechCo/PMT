@@ -203,7 +203,7 @@ jobs:
         shell: bash
         run: |
           if [ -f playwright.config.ts ] || [ -f playwright.config.js ] || [ -f playwright.config.mjs ]; then
-            pnpm run e2e -- --project=chromium
+            pnpm exec playwright test --project=chromium
           else
             echo "No Playwright config found. Skipping E2E smoke tests."
           fi

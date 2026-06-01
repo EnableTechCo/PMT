@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useRef, type ChangeEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,8 @@ import {
   Lock,
   Database,
   Download,
+  Upload,
+  Power,
   RefreshCcw,
   RotateCcw,
 } from "lucide-react";
@@ -88,7 +90,11 @@ function SettingsPageContent() {
   const [diagnosticMessage, setDiagnosticMessage] = useState("");
   const [diagnosticError, setDiagnosticError] = useState("");
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [showSwitchGithubForm, setShowSwitchGithubForm] = useState(false);
+  const [superGithubLoading, setSuperGithubLoading] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
+  const [backupNowLoading, setBackupNowLoading] = useState(false);
+  const [importingBackup, setImportingBackup] = useState(false);
   const [backupMessage, setBackupMessage] = useState("");
   const [backupError, setBackupError] = useState("");
   const [backupSummary, setBackupSummary] = useState<Record<
@@ -101,6 +107,7 @@ function SettingsPageContent() {
   const [selectedRestoreBackup, setSelectedRestoreBackup] =
     useState<BackupHistoryItem | null>(null);
   const [restoringBackupId, setRestoringBackupId] = useState("");
+  const importBackupInputRef = useRef<HTMLInputElement | null>(null);
 
   // User Profile display state (dummy/read-only for beauty)
   const [name, setName] = useState("");
@@ -430,56 +437,179 @@ function SettingsPageContent() {
                   </div>
                 )}
 
-                {githubUser ? (
-                  <div className="border border-gray-200 dark:border-gray-800 rounded-xl p-6 bg-slate-50/50 dark:bg-slate-900/20 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-                    <div className="flex items-center gap-4">
-                      {githubUser.avatarUrl ? (
-                        <Image
-                          src={githubUser.avatarUrl}
-                          alt={githubUser.login}
-                          width={56}
-                          height={56}
-                          unoptimized
-                          loader={({ src }) => src}
-                          className="w-14 h-14 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm"
-                        />
-                      ) : (
-                        <div className="w-14 h-14 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-lg">
-                          {githubUser.login.charAt(0).toUpperCase()}
-                        </div>
-                      )}
+                {isSuperAdmin ? (
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          Connected Account
+                        <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                          Super admin GitHub controls
                         </p>
-                        <p className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                          @{githubUser.login}
-                          <a
-                            href={`https://github.com/${githubUser.login}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-gray-400 hover:text-brand-500 transition-colors"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
+                        <p className="text-xs text-indigo-700/90 dark:text-indigo-300/90">
+                          Run privileged connection actions and maintain your
+                          fallback user token.
                         </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void checkGithubStatus();
+                          }}
+                          disabled={
+                            checkingStatus || connecting || superGithubLoading
+                          }
+                          className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
+                        >
+                          <RefreshCcw className="h-3.5 w-3.5" />
+                          Refresh status
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void clearSavedGithubToken();
+                          }}
+                          disabled={superGithubLoading || connecting}
+                          className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
+                        >
+                          {superGithubLoading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Power className="h-3.5 w-3.5" />
+                          )}
+                          Clear saved user token
+                        </button>
                       </div>
                     </div>
 
-                    {githubSource === "system" ? (
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300">
-                        Managed by department settings
+                    <p className="mt-3 text-xs text-indigo-800/90 dark:text-indigo-300/90">
+                      Auth source: {githubSource || "none"}. If source is
+                      <span className="font-semibold"> system</span>, active
+                      access comes from the department environment token and
+                      cannot be revoked from this page.
+                    </p>
+                  </div>
+                ) : null}
+
+                {githubUser ? (
+                  <div className="space-y-4">
+                    <div className="border border-gray-200 dark:border-gray-800 rounded-xl p-6 bg-slate-50/50 dark:bg-slate-900/20 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                      <div className="flex items-center gap-4">
+                        {githubUser.avatarUrl ? (
+                          <Image
+                            src={githubUser.avatarUrl}
+                            alt={githubUser.login}
+                            width={56}
+                            height={56}
+                            unoptimized
+                            loader={({ src }) => src}
+                            className="w-14 h-14 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-14 h-14 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-lg">
+                            {githubUser.login.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Connected Account
+                          </p>
+                          <p className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            @{githubUser.login}
+                            <a
+                              href={`https://github.com/${githubUser.login}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-gray-400 hover:text-brand-500 transition-colors"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          </p>
+                        </div>
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowDisconnectConfirm(true)}
-                        disabled={connecting}
-                        className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-red-200 dark:border-red-900/50 rounded-lg text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Disconnect Account
-                      </button>
-                    )}
+
+                      <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                        <button
+                          type="button"
+                          onClick={handleOAuthConnect}
+                          disabled={connecting}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                        >
+                          <Github className="w-4 h-4" />
+                          Connect another account
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowSwitchGithubForm((prev) => !prev)
+                          }
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-300 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-800 dark:text-brand-300 dark:hover:bg-brand-950/30"
+                        >
+                          <Key className="w-4 h-4" />
+                          {showSwitchGithubForm
+                            ? "Hide token form"
+                            : "Use personal token"}
+                        </button>
+
+                        {githubSource === "system" ? (
+                          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300">
+                            Managed by department settings
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setShowDisconnectConfirm(true)}
+                            disabled={connecting}
+                            className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-red-200 dark:border-red-900/50 rounded-lg text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Disconnect Account
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {showSwitchGithubForm ? (
+                      <div className="space-y-2 rounded-xl border border-gray-200 bg-slate-50 p-4 dark:border-gray-800 dark:bg-[#13131a]">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                          Connect using personal token
+                        </p>
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                          <input
+                            type="password"
+                            placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                            value={githubToken}
+                            onChange={(e) => setGithubToken(e.target.value)}
+                            className="flex-1 input-modern font-mono"
+                            disabled={connecting}
+                          />
+                          <button
+                            onClick={handleConnect}
+                            disabled={connecting || !githubToken}
+                            className="btn-primary px-6 shrink-0 inline-flex items-center gap-2"
+                          >
+                            {connecting ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Connecting...
+                              </>
+                            ) : (
+                              <>
+                                <Github className="w-4 h-4" />
+                                Save and switch
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        {connectError ? (
+                          <p className="text-xs text-red-500 flex items-center gap-1.5 mt-1.5">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            {connectError}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -707,6 +837,22 @@ function SettingsPageContent() {
                     <button
                       type="button"
                       onClick={() => {
+                        void createBackupNow();
+                      }}
+                      disabled={backupNowLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      {backupNowLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Database className="h-4 w-4" />
+                      )}
+                      Backup now
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
                         void downloadBackup();
                       }}
                       disabled={backupLoading}
@@ -723,6 +869,29 @@ function SettingsPageContent() {
                           Download backup
                         </>
                       )}
+                    </button>
+
+                    <input
+                      ref={importBackupInputRef}
+                      type="file"
+                      accept="application/json,.json"
+                      className="hidden"
+                      onChange={(event) => {
+                        void handleImportBackupFile(event);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={triggerImportBackupFile}
+                      disabled={importingBackup}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/20"
+                    >
+                      {importingBackup ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      Import backup
                     </button>
                   </div>
                 </div>
@@ -871,19 +1040,23 @@ function SettingsPageContent() {
                                     Download
                                   </button>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => requestRestoreBackup(backup)}
-                                    disabled={restoringBackupId === backup.id}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/20"
-                                  >
-                                    {restoringBackupId === backup.id ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <RotateCcw className="h-3.5 w-3.5" />
-                                    )}
-                                    Restore
-                                  </button>
+                                  {isSuperAdmin ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        requestRestoreBackup(backup)
+                                      }
+                                      disabled={restoringBackupId === backup.id}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/20"
+                                    >
+                                      {restoringBackupId === backup.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                      )}
+                                      Restore
+                                    </button>
+                                  ) : null}
                                 </div>
                               </td>
                             </tr>
@@ -922,7 +1095,7 @@ function SettingsPageContent() {
         }}
       />
       <ConfirmDialog
-        isOpen={Boolean(selectedRestoreBackup)}
+        isOpen={Boolean(selectedRestoreBackup) && isSuperAdmin}
         title="Restore backup"
         message={
           selectedRestoreBackup
@@ -956,6 +1129,7 @@ function SettingsPageContent() {
           "Successfully authenticated with GitHub! Your repositories and branches are now active.",
         );
         setGithubToken("");
+        setShowSwitchGithubForm(false);
       } else {
         setConnectError(
           data.error ||
@@ -979,6 +1153,7 @@ function SettingsPageContent() {
       });
       if (res.ok) {
         setGithubUser(null);
+        setShowSwitchGithubForm(false);
         setSuccessMsg("GitHub connection removed successfully.");
       } else {
         setConnectError("Failed to disconnect from GitHub.");
@@ -987,6 +1162,42 @@ function SettingsPageContent() {
       setConnectError("An error occurred during disconnection.");
     } finally {
       setConnecting(false);
+    }
+  }
+
+  async function clearSavedGithubToken() {
+    if (!isSuperAdmin) return;
+
+    setSuperGithubLoading(true);
+    setConnectError("");
+    setSuccessMsg("");
+
+    try {
+      const res = await fetch("/api/github/auth?forceUserToken=1", {
+        method: "DELETE",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to clear saved GitHub token",
+        );
+      }
+
+      setSuccessMsg(
+        "Saved personal GitHub token cleared. Department-managed access remains active if configured.",
+      );
+      await checkGithubStatus();
+    } catch (error) {
+      setConnectError(
+        error instanceof Error
+          ? error.message
+          : "Failed to clear saved GitHub token",
+      );
+    } finally {
+      setSuperGithubLoading(false);
     }
   }
 
@@ -1058,6 +1269,7 @@ function SettingsPageContent() {
   }
 
   function requestRestoreBackup(backup: BackupHistoryItem) {
+    if (!isSuperAdmin) return;
     setSelectedRestoreBackup(backup);
   }
 
@@ -1136,6 +1348,90 @@ function SettingsPageContent() {
       );
     } finally {
       setBackupLoading(false);
+    }
+  }
+
+  async function createBackupNow() {
+    setBackupNowLoading(true);
+    setBackupMessage("");
+    setBackupError("");
+
+    try {
+      const res = await fetch("/api/settings/backup", {
+        method: "GET",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to create backup",
+        );
+      }
+
+      setBackupSummary(body.tableCounts ?? null);
+      setBackupMessage("Backup snapshot created successfully.");
+      await loadBackups();
+    } catch (error) {
+      setBackupError(
+        error instanceof Error ? error.message : "Failed to create backup",
+      );
+    } finally {
+      setBackupNowLoading(false);
+    }
+  }
+
+  function triggerImportBackupFile() {
+    if (!isSuperAdmin) return;
+    setBackupError("");
+    setBackupMessage("");
+    importBackupInputRef.current?.click();
+  }
+
+  async function handleImportBackupFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    setImportingBackup(true);
+    setBackupError("");
+    setBackupMessage("");
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      const res = await fetch("/api/settings/backup/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          snapshot: parsed,
+          label: file.name.replace(/\.json$/i, ""),
+        }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to import backup",
+        );
+      }
+
+      setBackupSummary(body.tableCounts ?? null);
+      setBackupMessage(
+        "Backup imported and restored successfully. A safety snapshot was created first.",
+      );
+      await loadBackups();
+    } catch (error) {
+      setBackupError(
+        error instanceof Error ? error.message : "Failed to import backup",
+      );
+    } finally {
+      setImportingBackup(false);
     }
   }
 }

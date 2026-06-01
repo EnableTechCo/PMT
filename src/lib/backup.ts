@@ -468,3 +468,24 @@ export function emptyBackupTableCounts(): Record<BackupTableName, number> {
     {} as Record<BackupTableName, number>,
   );
 }
+
+export function isBackupSnapshot(value: unknown): value is BackupSnapshot {
+  if (!value || typeof value !== "object") return false;
+
+  const snapshot = value as Partial<BackupSnapshot> & {
+    tables?: Record<string, unknown>;
+  };
+
+  if (snapshot.format !== "pmt-backup") return false;
+  if (typeof snapshot.version !== "number") return false;
+  if (typeof snapshot.generatedAt !== "string") return false;
+  if (!snapshot.tables || typeof snapshot.tables !== "object") return false;
+
+  for (const tableName of BACKUP_TABLE_NAMES) {
+    if (!Array.isArray(snapshot.tables[tableName])) {
+      return false;
+    }
+  }
+
+  return true;
+}

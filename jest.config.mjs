@@ -1,4 +1,4 @@
-import nextJest from "next/jest";
+import nextJest from "next/jest.js";
 
 const createJestConfig = nextJest({
   dir: "./",
@@ -8,6 +8,9 @@ const customJestConfig = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
+    "^octokit$": "<rootDir>/tests/mocks/octokit.ts",
+    "^@octokit/auth-oauth-user$":
+      "<rootDir>/tests/mocks/octokit-auth-oauth-user.ts",
   },
   testEnvironment: "jsdom",
   testPathIgnorePatterns: ["<rootDir>/e2e/", "<rootDir>/.next/"],

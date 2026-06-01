@@ -113,3 +113,6 @@ redis_data/
 
 # Uploaded ticket files (local dev)
 /public/uploads/
+
+# Sentry Config File
+.env.sentry-build-plugin

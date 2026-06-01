@@ -94,6 +94,18 @@ cp .env.example .env.local
 - Example: `DATABASE_URL="postgresql://<user>:<password>@<host>:5432/<database>?sslmode=require"`
 - Set a unique `JWT_SECRET` for session security.
 - To enable GitHub features for every signed-in user without per-user setup, set one shared token in `GITHUB_TOKEN` (or `GITHUB_ACCESS_TOKEN` / `GITHUB_PAT`).
+- Set `NEXT_PUBLIC_APP_URL` and `APP_URL` to your real deployment domain in non-local environments so invite links do not fall back to localhost.
+- Set `FEEDBACK_INGEST_SECRET` to a long random value. Inbound mail webhooks must send this value as `x-feedback-secret` when calling `POST /api/feedback/email`.
+
+### Feedback Email Ingestion (dev@e-t.co.za)
+
+Use your existing email provider to forward incoming client emails into the feedback inbox:
+
+1. Configure an inbound webhook/route in your mail provider for `dev@e-t.co.za`.
+2. Point the webhook target to `https://<your-domain>/api/feedback/email`.
+3. Add header `x-feedback-secret: <FEEDBACK_INGEST_SECRET>`.
+4. Send payload fields: `from`, `subject`, and `text` (plus optional `attachments` and `raw`).
+5. Feedback appears in the `/feedback` dashboard and can be assigned to team members.
 
 ### 2. Database Initialization
 

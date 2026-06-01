@@ -56,6 +56,20 @@ const STATUSES = [
   "CLIENT_REVIEW",
 ] as const;
 
+interface ClientObligation {
+  id: string;
+  ticketId: string;
+  title: string;
+  description?: string | null;
+  status: "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED" | "OVERDUE";
+  dueAt?: string | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  evidenceNote?: string | null;
+  evidenceUrl?: string | null;
+  createdAt: string;
+}
+
 export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -65,6 +79,11 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const [saving, setSaving] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [obligations, setObligations] = useState<ClientObligation[]>([]);
+  const [obligationsLoading, setObligationsLoading] = useState(false);
+  const [creatingObligation, setCreatingObligation] = useState(false);
+  const [obligationTitle, setObligationTitle] = useState("");
+  const [obligationDueAt, setObligationDueAt] = useState("");
 
   // GitHub integration states
   const [_checkingGithub, setCheckingGithub] = useState(true);
@@ -140,30 +159,41 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
     }
   }, []);
 
+  const loadObligations = useCallback(async () => {
+    try {
+      setObligationsLoading(true);
+      const response = await fetch(`/api/tickets/${ticketId}/obligations`);
+      if (!response.ok) {
+        setObligations([]);
+        return;
+      }
+      const data = (await response.json()) as ClientObligation[];
+      setObligations(Array.isArray(data) ? data : []);
+    } catch {
+      setObligations([]);
+    } finally {
+      setObligationsLoading(false);
+    }
+  }, [ticketId]);
+
   useEffect(() => {
     if (!authLoading && user) {
       void load();
+      void loadObligations();
       void checkGithubAuth();
     }
-  }, [authLoading, user, load, checkGithubAuth]);
+  }, [authLoading, user, load, loadObligations, checkGithubAuth]);
 
   useEffect(() => {
     if (authLoading || !user) return;
 
-    const unsubscribe = onRealtimeChange((detail) => {
-      if (
-        detail.table !== "Ticket" &&
-        detail.table !== "GithubBranch" &&
-        detail.table !== "GithubPullRequest" &&
-        detail.table !== "GithubRepo"
-      ) {
-        return;
-      }
+    const unsubscribe = onRealtimeChange(() => {
       void load();
+      void loadObligations();
     });
 
     return unsubscribe;
-  }, [authLoading, user, load]);
+  }, [authLoading, user, load, loadObligations]);
 
   const loadBranches = async (owner: string, repo: string) => {
     setLoadingBranches(true);
@@ -334,6 +364,48 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
       setError("Save failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const createObligation = async () => {
+    const title = obligationTitle.trim();
+    if (!title) return;
+    setCreatingObligation(true);
+    try {
+      const response = await fetch(`/api/tickets/${ticketId}/obligations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          dueAt: obligationDueAt
+            ? new Date(obligationDueAt).toISOString()
+            : null,
+        }),
+      });
+      if (response.ok) {
+        setObligationTitle("");
+        setObligationDueAt("");
+        void loadObligations();
+      }
+    } finally {
+      setCreatingObligation(false);
+    }
+  };
+
+  const updateObligationStatus = async (
+    obligationId: string,
+    status: ClientObligation["status"],
+  ) => {
+    const response = await fetch(
+      `/api/tickets/${ticketId}/obligations/${obligationId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      },
+    );
+    if (response.ok) {
+      void loadObligations();
     }
   };
 
@@ -629,6 +701,124 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                 <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
                   {t.description || "—"}
                 </p>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">
+                    Client Obligations
+                  </h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Track client-owned deliverables and hold review timelines
+                    accountable.
+                  </p>
+                </div>
+              </div>
+
+              {user.role !== "CLIENT" ? (
+                <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_220px_auto]">
+                  <input
+                    value={obligationTitle}
+                    onChange={(e) => setObligationTitle(e.target.value)}
+                    placeholder="Client action required"
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={obligationDueAt}
+                    onChange={(e) => setObligationDueAt(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void createObligation()}
+                    disabled={creatingObligation}
+                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {creatingObligation ? "Adding..." : "Add"}
+                  </button>
+                </div>
+              ) : null}
+
+              {obligationsLoading ? (
+                <p className="text-sm text-gray-500">Loading obligations...</p>
+              ) : obligations.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  No client obligations yet.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {obligations.map((obligation) => (
+                    <li
+                      key={obligation.id}
+                      className="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+                    >
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                            {obligation.title}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Status: {obligation.status}
+                            {obligation.dueAt
+                              ? ` · Due ${new Date(obligation.dueAt).toLocaleString()}`
+                              : ""}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {user.role === "CLIENT" &&
+                          obligation.status === "PENDING" ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void updateObligationStatus(
+                                  obligation.id,
+                                  "SUBMITTED",
+                                )
+                              }
+                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
+                            >
+                              Mark submitted
+                            </button>
+                          ) : null}
+
+                          {user.role !== "CLIENT" &&
+                          obligation.status === "SUBMITTED" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void updateObligationStatus(
+                                    obligation.id,
+                                    "APPROVED",
+                                  )
+                                }
+                                className="rounded-lg border border-green-300 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-300"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void updateObligationStatus(
+                                    obligation.id,
+                                    "REJECTED",
+                                  )
+                                }
+                                className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-300"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
             </section>
 
