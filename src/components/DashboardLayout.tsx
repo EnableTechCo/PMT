@@ -88,37 +88,54 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const navigation: NavItem[] = useMemo(
     () =>
-      user?.role === "SUPER_ADMIN"
+      user?.role === "CLIENT"
         ? [
-            { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-            { name: "Executive", href: "/executive", icon: BarChart3 },
-            { name: "Clients", href: "/clients", icon: Handshake },
-            { name: "Feedback", href: "/feedback", icon: Bell },
-            { name: "Workload", href: "/workload", icon: Briefcase },
-            { name: "Tickets", href: "/tickets", icon: Ticket },
-            { name: "Docs", href: "/docs", icon: FileText },
-            { name: "Projects", href: "/projects", icon: FolderKanban },
-            { name: "Teams", href: "/teams", icon: Users2 },
-            { name: "Monitoring", href: "/monitoring", icon: Activity },
+            {
+              name: "Dashboard",
+              href: "/client/dashboard",
+              icon: LayoutDashboard,
+            },
           ]
-        : [
-            { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-            { name: "Clients", href: "/clients", icon: Handshake },
-            { name: "Feedback", href: "/feedback", icon: Bell },
-            { name: "Workload", href: "/workload", icon: Briefcase },
-            { name: "Tickets", href: "/tickets", icon: Ticket },
-            { name: "Docs", href: "/docs", icon: FileText },
-            { name: "Projects", href: "/projects", icon: FolderKanban },
-          ],
+        : user?.role === "SUPER_ADMIN"
+          ? [
+              { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+              { name: "Executive", href: "/executive", icon: BarChart3 },
+              { name: "Clients", href: "/clients", icon: Handshake },
+              { name: "Feedback", href: "/feedback", icon: Bell },
+              { name: "Workload", href: "/workload", icon: Briefcase },
+              { name: "Tickets", href: "/tickets", icon: Ticket },
+              { name: "Docs", href: "/docs", icon: FileText },
+              { name: "Projects", href: "/projects", icon: FolderKanban },
+              { name: "Teams", href: "/teams", icon: Users2 },
+              { name: "Monitoring", href: "/monitoring", icon: Activity },
+            ]
+          : [
+              { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+              { name: "Clients", href: "/clients", icon: Handshake },
+              { name: "Feedback", href: "/feedback", icon: Bell },
+              { name: "Workload", href: "/workload", icon: Briefcase },
+              { name: "Tickets", href: "/tickets", icon: Ticket },
+              { name: "Docs", href: "/docs", icon: FileText },
+              { name: "Projects", href: "/projects", icon: FolderKanban },
+            ],
     [user?.role],
   );
-  const quickActions = [
-    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Tickets", href: "/tickets", icon: Ticket },
-    { name: "Feedback", href: "/feedback", icon: Bell },
-    { name: "Workload", href: "/workload", icon: Briefcase },
-    { name: "Projects", href: "/projects", icon: FolderKanban },
-  ];
+  const quickActions =
+    user?.role === "CLIENT"
+      ? [
+          {
+            name: "Dashboard",
+            href: "/client/dashboard",
+            icon: LayoutDashboard,
+          },
+        ]
+      : [
+          { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+          { name: "Tickets", href: "/tickets", icon: Ticket },
+          { name: "Feedback", href: "/feedback", icon: Bell },
+          { name: "Workload", href: "/workload", icon: Briefcase },
+          { name: "Projects", href: "/projects", icon: FolderKanban },
+        ];
 
   const pathname = usePathname();
 

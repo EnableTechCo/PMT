@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { SelectMenu } from "@/components/SelectMenu";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface FeedbackItem {
@@ -129,21 +130,17 @@ export default function FeedbackPage() {
             <label className="text-sm font-medium text-gray-600 dark:text-gray-300">
               Status
             </label>
-            <select
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900"
+            <SelectMenu
               value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(
-                  e.target.value as (typeof STATUS_OPTIONS)[number],
-                )
+              onChange={(value) =>
+                setStatusFilter(value as (typeof STATUS_OPTIONS)[number])
               }
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              options={STATUS_OPTIONS.map((option) => ({
+                value: option,
+                label: option,
+              }))}
+              className="min-w-[180px]"
+            />
           </div>
         </div>
 
@@ -182,23 +179,23 @@ export default function FeedbackPage() {
                   </div>
 
                   <div className="min-w-[220px] space-y-2">
-                    <select
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900"
+                    <SelectMenu
                       value={assignments[item.id] ?? item.assignedToId ?? ""}
-                      onChange={(e) =>
+                      onChange={(value) =>
                         setAssignments((prev) => ({
                           ...prev,
-                          [item.id]: e.target.value,
+                          [item.id]: value,
                         }))
                       }
-                    >
-                      <option value="">Select assignee</option>
-                      {users.map((staff) => (
-                        <option key={staff.id} value={staff.id}>
-                          {staff.name} ({staff.email})
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: "Select assignee" },
+                        ...users.map((staff) => ({
+                          value: staff.id,
+                          label: `${staff.name} (${staff.email})`,
+                        })),
+                      ]}
+                      className="w-full"
+                    />
                     <button
                       type="button"
                       onClick={() => void assignFeedback(item.id)}

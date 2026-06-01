@@ -118,7 +118,7 @@ function ResetPasswordContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-red-900 to-gray-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -144,7 +144,7 @@ function ResetPasswordContent() {
               </p>
               <Link
                 href="/auth/login"
-                className="inline-flex items-center justify-center w-full py-3 px-6 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-base font-medium rounded-xl shadow-lg hover:from-pink-600 hover:to-purple-700 transition"
+                className="inline-flex items-center justify-center w-full py-3 px-6 bg-gradient-to-r from-red-500 to-red-600 text-white text-base font-medium rounded-xl shadow-lg hover:from-red-600 hover:to-red-700 transition"
               >
                 Sign In
               </Link>
@@ -341,7 +341,7 @@ export default function ResetPasswordPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-red-900 to-gray-900 flex items-center justify-center p-4">
           <div className="w-full max-w-md">
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/20 p-8 shadow-2xl text-center">
               <Loader2 className="w-8 h-8 animate-spin text-white mx-auto mb-4" />

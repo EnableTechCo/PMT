@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTheme } from "@/contexts/ThemeContext";
+import DashboardLayout from "@/components/DashboardLayout";
 import { OverviewMetricStrip } from "@/components/OverviewMetricStrip";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
@@ -61,8 +61,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 };
 
 export default function ClientDashboardPage() {
-  const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { user, loading: authLoading } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [projects, setProjects] = useState<ClientProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,16 +126,19 @@ export default function ClientDashboardPage() {
     } catch {}
   };
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-      window.location.replace("/");
-    } catch {
-      window.location.replace("/");
-    }
-  };
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--app-canvas)]">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-brand-600 dark:border-gray-700" />
+      </div>
+    );
+  }
 
-  if (!user || user.role !== "CLIENT") {
+  if (!user) {
+    return null;
+  }
+
+  if (user.role !== "CLIENT") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--app-canvas)]">
         <div className="text-center">
@@ -159,49 +161,8 @@ export default function ClientDashboardPage() {
   const completed = tickets.filter((t) => t.status === "COMPLETE").length;
 
   return (
-    <div className="min-h-screen bg-[var(--app-canvas)] text-[var(--text-primary)]">
-      {/* ── Top nav ── */}
-      <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--surface-elevated)] dark:border-gray-800 dark:bg-[#16161c]">
-        <div className="flex h-14 items-center justify-between px-6">
-          {/* Brand */}
-          <span className="text-sm font-semibold tracking-tight text-gray-900 dark:text-white">
-            Client Portal
-          </span>
-
-          {/* Right actions */}
-          <div className="flex items-center gap-5">
-            {/* Theme toggle */}
-            <button
-              onClick={toggleTheme}
-              className="text-xs font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors"
-              title="Toggle theme"
-            >
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </button>
-
-            {/* User info */}
-            <div className="text-right">
-              <p className="text-sm font-medium text-gray-900 dark:text-white leading-none">
-                {user.name}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Client
-              </p>
-            </div>
-
-            {/* Sign out */}
-            <button
-              onClick={handleLogout}
-              className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-[#1c1c24] dark:text-gray-300 dark:hover:bg-white/5"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* ── Main content ── */}
-      <main className="mx-auto w-full max-w-screen-xl px-6 py-8 space-y-8">
+    <DashboardLayout>
+      <div className="w-full space-y-8">
         {/* Page heading */}
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
@@ -396,7 +357,7 @@ export default function ClientDashboardPage() {
             </div>
           )}
         </section>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { MonitoringTabs } from "@/components/MonitoringTabs";
+import { SelectMenu } from "@/components/SelectMenu";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckCircle2,
@@ -277,29 +278,27 @@ export default function WorkflowsPage() {
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
               Repository
             </label>
-            <select
-              value={`${owner}/${repo}`}
-              onChange={(e) => {
-                const [nextOwner, nextRepo] = e.target.value.split("/");
-                setOwner(nextOwner || "");
-                setRepo(nextRepo || "");
-                const found = repos.find(
-                  (r) => r.owner?.login === nextOwner && r.name === nextRepo,
-                );
-                setRef(found?.default_branch || "main");
-              }}
-              className="mt-1 w-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
-              disabled={loadingRepos || repos.length === 0}
-            >
-              {repos.map((r) => (
-                <option
-                  key={`${r.owner?.login}/${r.name}`}
-                  value={`${r.owner?.login}/${r.name}`}
-                >
-                  {r.full_name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <SelectMenu
+                value={`${owner}/${repo}`}
+                onChange={(value) => {
+                  const [nextOwner, nextRepo] = value.split("/");
+                  setOwner(nextOwner || "");
+                  setRepo(nextRepo || "");
+                  const found = repos.find(
+                    (r) => r.owner?.login === nextOwner && r.name === nextRepo,
+                  );
+                  setRef(found?.default_branch || "main");
+                }}
+                options={repos.map((r) => ({
+                  value: `${r.owner?.login}/${r.name}`,
+                  label: r.full_name,
+                }))}
+                disabled={loadingRepos || repos.length === 0}
+                className="w-full"
+                triggerClassName="border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+              />
+            </div>
           </div>
 
           <div>

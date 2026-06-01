@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { SelectMenu } from "@/components/SelectMenu";
 import {
   ArrowLeft,
   Mail,
@@ -378,16 +379,18 @@ export default function TeamDetailPage() {
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 Role
               </label>
-              <select
-                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
-                value={role}
-                onChange={(e) =>
-                  setRole(e.target.value as "USER" | "SUPER_ADMIN")
-                }
-              >
-                <option value="USER">Admin</option>
-                <option value="SUPER_ADMIN">Super Admin</option>
-              </select>
+              <div className="mt-1">
+                <SelectMenu
+                  value={role}
+                  onChange={(value) => setRole(value as "USER" | "SUPER_ADMIN")}
+                  options={[
+                    { value: "USER", label: "Admin" },
+                    { value: "SUPER_ADMIN", label: "Super Admin" },
+                  ]}
+                  className="w-full"
+                  triggerClassName="border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                />
+              </div>
             </div>
           </div>
 
@@ -506,19 +509,21 @@ export default function TeamDetailPage() {
                           placeholder="Full name"
                           className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
                         />
-                        <select
+                        <SelectMenu
                           value={editMember.role}
-                          onChange={(e) =>
+                          onChange={(value) =>
                             setEditMember((prev) => ({
                               ...prev,
-                              role: e.target.value as "USER" | "SUPER_ADMIN",
+                              role: value as "USER" | "SUPER_ADMIN",
                             }))
                           }
-                          className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
-                        >
-                          <option value="USER">Admin</option>
-                          <option value="SUPER_ADMIN">Super Admin</option>
-                        </select>
+                          options={[
+                            { value: "USER", label: "Admin" },
+                            { value: "SUPER_ADMIN", label: "Super Admin" },
+                          ]}
+                          className="w-full"
+                          triggerClassName="border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                        />
                         <input
                           type="text"
                           value={editMember.phone}

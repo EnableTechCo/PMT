@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import TipTapEditor from "@/components/TipTapEditor";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { SelectMenu } from "@/components/SelectMenu";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
 import {
@@ -974,7 +975,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                 {/* PRs */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <GitPullRequest className="w-3.5 h-3.5 text-purple-500" />
+                    <GitPullRequest className="w-3.5 h-3.5 text-red-500" />
                     Linked Pull Requests ({(t.githubPullRequests ?? []).length})
                   </h3>
                   {!t.githubPullRequests ||
@@ -1000,7 +1001,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                                 className={cn(
                                   "inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold",
                                   isMerged &&
-                                    "bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-400",
+                                    "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400",
                                   isOpen &&
                                     "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
                                   !isOpen &&
@@ -1166,37 +1167,35 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
               <div className="space-y-4 text-sm">
                 <div>
                   <label className="mb-1 block text-gray-500">Status</label>
-                  <select
+                  <SelectMenu
                     value={t.status}
+                    onChange={(value) => {
+                      void patchTicket({ status: value });
+                    }}
                     disabled={!canEdit}
-                    onChange={(e) =>
-                      void patchTicket({ status: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                  >
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {statusLabel(s)}
-                      </option>
-                    ))}
-                  </select>
+                    options={STATUSES.map((s) => ({
+                      value: s,
+                      label: statusLabel(s),
+                    }))}
+                    className="w-full"
+                    triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-gray-500">Priority</label>
-                  <select
+                  <SelectMenu
                     value={priorityValue}
+                    onChange={(value) => {
+                      void patchTicket({ priority: value });
+                    }}
                     disabled={!canEdit || user.role === "CLIENT"}
-                    onChange={(e) =>
-                      void patchTicket({ priority: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                  >
-                    {PRIORITIES.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={PRIORITIES.map((p) => ({
+                      value: p.value,
+                      label: p.label,
+                    }))}
+                    className="w-full"
+                    triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-gray-500">Start date</label>
@@ -1329,7 +1328,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
           <div className="bg-white dark:bg-[#1c1c24] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden flex flex-col max-h-[85vh]">
             <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white dark:from-[#191922] dark:to-[#1c1c24]">
               <div className="flex items-center gap-2">
-                <GitPullRequest className="w-5 h-5 text-purple-500" />
+                <GitPullRequest className="w-5 h-5 text-red-500" />
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-base">
                     Link Pull Request

@@ -291,22 +291,22 @@ export default function CreateTicketModal({
               <label className="mb-2 block text-sm font-medium text-slate-200">
                 Team *
               </label>
-              <select
-                required
+              <SelectMenu
                 value={formData.teamId}
-                onChange={(e) => {
-                  const teamId = e.target.value;
+                onChange={(teamId) => {
                   setFormData((prev) => ({ ...prev, teamId, projectId: "" }));
                 }}
-                className="w-full rounded-none border border-slate-700 bg-slate-900 px-4 py-3 text-white shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-              >
-                <option value="">Select team...</option>
-                {teams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "Select team..." },
+                  ...teams.map((team) => ({
+                    value: team.id,
+                    label: team.name,
+                  })),
+                ]}
+                className="w-full"
+                triggerClassName="rounded-none border-slate-700 bg-slate-900 text-white"
+                menuClassName="bg-slate-950 text-slate-100"
+              />
             </div>
           )}
 
@@ -315,33 +315,42 @@ export default function CreateTicketModal({
               <label className="mb-2 block text-sm font-medium text-slate-200">
                 Assignee
               </label>
-              <select
+              <SelectMenu
                 value={formData.assigneeId}
-                onChange={(e) =>
+                onChange={(value) =>
                   setFormData((prev) => ({
                     ...prev,
-                    assigneeId: e.target.value,
+                    assigneeId: value,
                   }))
                 }
-                className="w-full rounded-none border border-slate-700 bg-slate-900 px-4 py-3 text-white shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-              >
-                <option value="">Unassigned</option>
-                {isLoadingAssignees ? (
-                  <option>Loading assignees...</option>
-                ) : (
-                  assignees.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name}
-                    </option>
-                  ))
-                )}
-              </select>
+                options={
+                  isLoadingAssignees
+                    ? [
+                        {
+                          value: "",
+                          label: "Loading assignees...",
+                          disabled: true,
+                        },
+                      ]
+                    : [
+                        { value: "", label: "Unassigned" },
+                        ...assignees.map((member) => ({
+                          value: member.id,
+                          label: member.name,
+                        })),
+                      ]
+                }
+                disabled={isLoadingAssignees}
+                className="w-full"
+                triggerClassName="rounded-none border-slate-700 bg-slate-900 text-white"
+                menuClassName="bg-slate-950 text-slate-100"
+              />
             </div>
           )}
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-200">
-              Client (Select first) *
+              Client (Optional)
             </label>
             <SelectMenu
               value={formData.clientId}
@@ -364,7 +373,7 @@ export default function CreateTicketModal({
                         },
                       ]
                     : [
-                        { value: "", label: "Select an invited client..." },
+                        { value: "", label: "No client selected" },
                         ...clients.map((client) => ({
                           value: client.id,
                           label: `${client.name} • ${client.email}`,
@@ -372,39 +381,56 @@ export default function CreateTicketModal({
                       ]
               }
               disabled={isLoadingClients || clients.length === 0}
-              placeholder="Select an invited client..."
+              placeholder="No client selected"
               className="w-full"
               triggerClassName="rounded-none border border-slate-700 bg-slate-900 text-slate-100"
               menuClassName="bg-slate-950 text-slate-100"
             />
+            {!formData.clientId ? (
+              <p className="mt-2 text-xs text-slate-400">
+                You can create a ticket without linking a client.
+              </p>
+            ) : null}
           </div>
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-200">
               Project (From selected client)
             </label>
-            <select
-              required
+            <SelectMenu
               value={formData.projectId}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, projectId: e.target.value }))
+              onChange={(value) =>
+                setFormData((prev) => ({ ...prev, projectId: value }))
               }
               disabled={!canSelectProject || isLoadingProjects}
-              className="w-full rounded-none border border-slate-700 bg-slate-900 px-4 py-3 text-white shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {!canSelectProject ? (
-                <option value="">Select team and client first</option>
-              ) : (
-                <option value="">Select project...</option>
-              )}
-              {isLoadingProjects
-                ? [<option key="loading">Loading projects...</option>]
-                : projectsForSelectedClient.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-            </select>
+              options={
+                !canSelectProject
+                  ? [
+                      {
+                        value: "",
+                        label: "Select a client to link a project (optional)",
+                      },
+                    ]
+                  : isLoadingProjects
+                    ? [
+                        {
+                          value: "",
+                          label: "Loading projects...",
+                          disabled: true,
+                        },
+                      ]
+                    : [
+                        { value: "", label: "Select project..." },
+                        ...projectsForSelectedClient.map((project) => ({
+                          value: project.id,
+                          label: project.name,
+                        })),
+                      ]
+              }
+              className="w-full"
+              triggerClassName="rounded-none border-slate-700 bg-slate-900 text-white disabled:cursor-not-allowed disabled:opacity-50"
+              menuClassName="bg-slate-950 text-slate-100"
+            />
 
             {formData.clientId &&
             !isLoadingProjects &&
@@ -487,22 +513,22 @@ export default function CreateTicketModal({
                 <label className="mb-2 block text-sm font-medium text-slate-200">
                   Priority
                 </label>
-                <select
+                <SelectMenu
                   value={formData.priority}
-                  onChange={(e) =>
+                  onChange={(value) =>
                     setFormData((prev) => ({
                       ...prev,
-                      priority: e.target.value,
+                      priority: value,
                     }))
                   }
-                  className="w-full rounded-none border border-slate-700 bg-slate-900 px-4 py-3 text-white shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                >
-                  {priorityOptions.map((priority) => (
-                    <option key={priority.value} value={priority.value}>
-                      {priority.label}
-                    </option>
-                  ))}
-                </select>
+                  options={priorityOptions.map((priority) => ({
+                    value: priority.value,
+                    label: priority.label,
+                  }))}
+                  className="w-full"
+                  triggerClassName="rounded-none border-slate-700 bg-slate-900 text-white"
+                  menuClassName="bg-slate-950 text-slate-100"
+                />
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -627,19 +653,11 @@ export default function CreateTicketModal({
             <button
               type="submit"
               disabled={
-                isSubmitting ||
-                !formData.title.trim() ||
-                !formData.teamId ||
-                !formData.clientId ||
-                !formData.projectId
+                isSubmitting || !formData.title.trim() || !formData.teamId
               }
               className={cn(
                 "btn-primary",
-                (isSubmitting ||
-                  !formData.title.trim() ||
-                  !formData.teamId ||
-                  !formData.clientId ||
-                  !formData.projectId) &&
+                (isSubmitting || !formData.title.trim() || !formData.teamId) &&
                   "cursor-not-allowed opacity-50",
               )}
             >

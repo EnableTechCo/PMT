@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/contexts/TeamContext";
+import { SelectMenu } from "@/components/SelectMenu";
 
 const inviteRoleOptions = [
   { value: "USER", label: "Admin" },
@@ -92,45 +93,42 @@ export default function AdminInvitePage() {
 
         <div>
           <label className="block text-sm mb-1">Role</label>
-          <select
+          <SelectMenu
             value={role}
-            onChange={(e) => {
-              const nextRole = e.target
-                .value as (typeof inviteRoleOptions)[number]["value"];
+            onChange={(value) => {
+              const nextRole =
+                value as (typeof inviteRoleOptions)[number]["value"];
               setRole(nextRole);
               if (nextRole === "CLIENT") {
                 setTeamId("");
               }
             }}
-            className="w-full border rounded px-3 py-2"
-            required
-          >
-            {inviteRoleOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            options={inviteRoleOptions.map((option) => ({
+              value: option.value,
+              label: option.label,
+            }))}
+            className="w-full"
+          />
         </div>
 
         <div>
           <label className="block text-sm mb-1">Team</label>
-          <select
+          <SelectMenu
             value={teamId}
-            onChange={(e) => setTeamId(e.target.value)}
-            className="w-full border rounded px-3 py-2"
-            required={role !== "CLIENT"}
+            onChange={setTeamId}
+            options={[
+              {
+                value: "",
+                label:
+                  role === "CLIENT"
+                    ? "Not required for client"
+                    : "Select a team",
+              },
+              ...teams.map((t) => ({ value: t.id, label: t.name })),
+            ]}
             disabled={role === "CLIENT"}
-          >
-            <option value="">
-              {role === "CLIENT" ? "Not required for client" : "Select a team"}
-            </option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+            className="w-full"
+          />
           {teamsLoading && (
             <p className="text-xs text-gray-500 mt-1">Loading teams...</p>
           )}

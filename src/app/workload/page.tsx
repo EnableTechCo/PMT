@@ -685,22 +685,20 @@ export default function WorkloadPage() {
                                 Delete ticket
                               </span>
                             </button>
-                            <select
+                            <SelectMenu
                               value={ticket.status}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) =>
-                                handleStatusChange(ticket.id, e.target.value)
+                              onChange={(value) =>
+                                handleStatusChange(ticket.id, value)
                               }
-                              className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-900 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800/50 dark:text-white"
-                            >
-                              {Object.entries(statusConfig).map(
-                                ([key, config]) => (
-                                  <option key={key} value={key}>
-                                    {config.label}
-                                  </option>
-                                ),
+                              options={Object.entries(statusConfig).map(
+                                ([key, config]) => ({
+                                  value: key,
+                                  label: config.label,
+                                }),
                               )}
-                            </select>
+                              size="sm"
+                              className="w-[10rem]"
+                            />
                           </div>
                         </td>
                       </tr>

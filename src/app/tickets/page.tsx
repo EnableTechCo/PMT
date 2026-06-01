@@ -8,6 +8,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Pagination } from "@/components/Pagination";
 import CreateTicketModal from "@/components/CreateTicketModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { SelectMenu } from "@/components/SelectMenu";
 import {
   Plus,
   Filter,
@@ -22,6 +23,7 @@ import {
   Clock as ClockIcon,
   Zap,
   ListTodo,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
@@ -57,6 +59,22 @@ interface Ticket {
     name: string;
   } | null;
 }
+
+type ImportRowResult = {
+  index: number;
+  title: string;
+  status: "validated" | "created" | "error";
+  message: string;
+  ticketId?: string;
+};
+
+type ImportSummary = {
+  total: number;
+  created: number;
+  validated: number;
+  failed: number;
+  dryRun: boolean;
+};
 
 const statusConfig = {
   BACKLOG: {
@@ -98,7 +116,7 @@ const statusConfig = {
   CLIENT_REVIEW: {
     label: "Client Review",
     color:
-      "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-400 dark:border-purple-500/30",
+      "bg-red-100 text-red-800 border border-red-300 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30",
     icon: Eye,
   },
 };
@@ -111,6 +129,23 @@ const priorityFilterOptions = [
   { value: "HIGH", label: "High" },
   { value: "URGENT", label: "Urgent" },
 ];
+
+const SAMPLE_IMPORT_JSON = `[
+  {
+    "title": "Finalize onboarding checklist",
+    "description": "Confirm all onboarding steps for new clients.",
+    "acceptanceCriteria": "Checklist signed off by ops lead.",
+    "status": "BACKLOG",
+    "priority": "MEDIUM",
+    "creatorEmail": "dev@e-t.co.za",
+    "assigneeEmail": null,
+    "teamName": "Development",
+    "clientEmail": null,
+    "projectName": "Blubook",
+    "startDate": "2026-06-01T08:00:00Z",
+    "dueDate": "2026-06-07T17:00:00Z"
+  }
+]`;
 
 export default function TicketsPage() {
   const router = useRouter();
@@ -127,6 +162,14 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importPayload, setImportPayload] = useState(SAMPLE_IMPORT_JSON);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(
+    null,
+  );
+  const [importRows, setImportRows] = useState<ImportRowResult[]>([]);
+  const [importError, setImportError] = useState("");
   const [pendingDeleteTicketId, setPendingDeleteTicketId] = useState<
     string | null
   >(null);
@@ -316,6 +359,61 @@ export default function TicketsPage() {
     router.push(`/tickets/${id}`);
   };
 
+  const executeImport = async (dryRun: boolean) => {
+    setImportError("");
+    setImportSummary(null);
+    setImportRows([]);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(importPayload);
+    } catch {
+      setImportError("Payload must be valid JSON.");
+      return;
+    }
+
+    if (!Array.isArray(parsed)) {
+      setImportError("Payload must be a JSON array of tasks.");
+      return;
+    }
+
+    setImportBusy(true);
+    try {
+      const response = await fetch("/api/tickets/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tasks: parsed, dryRun }),
+      });
+
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to import tasks",
+        );
+      }
+
+      setImportSummary((body.summary ?? null) as ImportSummary | null);
+      setImportRows(Array.isArray(body.rows) ? body.rows : []);
+
+      if (!dryRun) {
+        await fetchTickets();
+      }
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Failed to import tasks");
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const loadSampleImportPayload = () => {
+    setImportPayload(SAMPLE_IMPORT_JSON);
+    setImportError("");
+    setImportSummary(null);
+    setImportRows([]);
+  };
+
   const filteredTickets = tickets.filter(
     (ticket) =>
       ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -358,6 +456,16 @@ export default function TicketsPage() {
                 <span>Create Ticket</span>
               </button>
             )}
+            {user.role === "SUPER_ADMIN" && (
+              <button
+                type="button"
+                onClick={() => setShowImportModal(true)}
+                className="inline-flex items-center space-x-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Import Tasks</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -378,7 +486,7 @@ export default function TicketsPage() {
 
             {/* Status Filter */}
             <div className="flex items-center space-x-3">
-              <select
+              <SelectMenu
                 value={
                   user.role === "SUPER_ADMIN"
                     ? isAllTeams
@@ -386,8 +494,7 @@ export default function TicketsPage() {
                       : activeTeamId
                     : activeTeamId
                 }
-                onChange={(e) => {
-                  const v = e.target.value;
+                onChange={(v) => {
                   if (user.role === "SUPER_ADMIN") {
                     if (v === "__all__") setAllTeamsMode(true);
                     else {
@@ -401,41 +508,36 @@ export default function TicketsPage() {
                 disabled={
                   teamLoading || teams.length === 0 || user.role === "CLIENT"
                 }
-                className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-              >
-                {user?.role === "SUPER_ADMIN" && (
-                  <option value="__all__">All teams</option>
-                )}
-                {teams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  ...(user?.role === "SUPER_ADMIN"
+                    ? [{ value: "__all__", label: "All teams" }]
+                    : []),
+                  ...teams.map((t) => ({ value: t.id, label: t.name })),
+                ]}
+                className="min-w-[190px]"
+                triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+              />
               <Filter className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-              <select
+              <SelectMenu
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-              >
-                <option value="">All Statuses</option>
-                {Object.entries(statusConfig).map(([key, config]) => (
-                  <option key={key} value={key}>
-                    {config.label}
-                  </option>
-                ))}
-              </select>
-              <select
+                onChange={setStatusFilter}
+                options={[
+                  { value: "", label: "All Statuses" },
+                  ...Object.entries(statusConfig).map(([key, config]) => ({
+                    value: key,
+                    label: config.label,
+                  })),
+                ]}
+                className="min-w-[170px]"
+                triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+              />
+              <SelectMenu
                 value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-              >
-                {priorityFilterOptions.map((opt) => (
-                  <option key={opt.value || "all"} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                onChange={setPriorityFilter}
+                options={priorityFilterOptions}
+                className="min-w-[170px]"
+                triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+              />
             </div>
           </div>
         </div>
@@ -568,20 +670,20 @@ export default function TicketsPage() {
                     {/* Actions */}
                     {user.role === "USER" || user.role === "SUPER_ADMIN" ? (
                       <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-800/50">
-                        <select
+                        <SelectMenu
                           value={ticket.status}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) =>
-                            handleStatusChange(ticket.id, e.target.value)
+                          onChange={(value) =>
+                            handleStatusChange(ticket.id, value)
                           }
-                          className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                        >
-                          {Object.entries(statusConfig).map(([key, config]) => (
-                            <option key={key} value={key}>
-                              {config.label}
-                            </option>
-                          ))}
-                        </select>
+                          options={Object.entries(statusConfig).map(
+                            ([key, config]) => ({
+                              value: key,
+                              label: config.label,
+                            }),
+                          )}
+                          className="w-full"
+                          triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                        />
                       </div>
                     ) : null}
                   </div>
@@ -607,6 +709,128 @@ export default function TicketsPage() {
           }
           teams={teams}
         />
+        {showImportModal && user.role === "SUPER_ADMIN" && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowImportModal(false)}
+            />
+            <div className="relative w-full max-w-4xl rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-800 dark:bg-[#111217]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Import Tasks As Tickets
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Paste a JSON array, validate, then import.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowImportModal(false)}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-4">
+                <textarea
+                  value={importPayload}
+                  onChange={(e) => setImportPayload(e.target.value)}
+                  className="h-64 w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-100"
+                />
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadSampleImportPayload}
+                  disabled={importBusy}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                >
+                  Load Sample
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void executeImport(true);
+                  }}
+                  disabled={importBusy}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                >
+                  Validate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void executeImport(false);
+                  }}
+                  disabled={importBusy}
+                  className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {importBusy ? "Working..." : "Import Tickets"}
+                </button>
+              </div>
+
+              {importError && (
+                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {importError}
+                </div>
+              )}
+
+              {importSummary && (
+                <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-200">
+                  total: {importSummary.total} · created:{" "}
+                  {importSummary.created} · validated: {importSummary.validated}{" "}
+                  · failed: {importSummary.failed} · mode:{" "}
+                  {importSummary.dryRun ? "validate" : "import"}
+                </div>
+              )}
+
+              {importRows.length > 0 && (
+                <div className="mt-4 max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-900/60">
+                      <tr>
+                        <th className="px-3 py-2">#</th>
+                        <th className="px-3 py-2">Title</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importRows.map((row) => (
+                        <tr
+                          key={`${row.index}-${row.title}`}
+                          className="border-t border-gray-200 dark:border-gray-800"
+                        >
+                          <td className="px-3 py-2">{row.index + 1}</td>
+                          <td className="px-3 py-2">{row.title}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-0.5 text-xs font-medium",
+                                row.status === "error"
+                                  ? "bg-red-100 text-red-700"
+                                  : row.status === "created"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-blue-100 text-blue-700",
+                              )}
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">{row.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         <ConfirmDialog
           isOpen={pendingDeleteTicketId !== null}
           title="Delete ticket"

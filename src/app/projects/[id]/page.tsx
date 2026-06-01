@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { SelectMenu } from "@/components/SelectMenu";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
 type Milestone = {
@@ -470,21 +471,23 @@ export default function ProjectDetailPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Linked Client
                   </label>
-                  <select
+                  <SelectMenu
                     value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                  >
-                    <option value="">No client yet</option>
-                    {clients.map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.name}
-                        {client.invitationStatus === "INVITED_NOT_CONFIRMED"
-                          ? " (Invited)"
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setSelectedClientId}
+                    options={[
+                      { value: "", label: "No client yet" },
+                      ...clients.map((client) => ({
+                        value: client.id,
+                        label:
+                          client.name +
+                          (client.invitationStatus === "INVITED_NOT_CONFIRMED"
+                            ? " (Invited)"
+                            : ""),
+                      })),
+                    ]}
+                    className="w-full"
+                    triggerClassName="border-gray-300 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  />
                   {loadingClients ? (
                     <p className="text-xs text-gray-500">Loading clients...</p>
                   ) : null}

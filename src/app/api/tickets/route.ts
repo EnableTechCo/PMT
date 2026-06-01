@@ -32,9 +32,6 @@ const ticketInclude = {
       name: true,
       health: true,
       progress: true,
-      githubRepos: {
-        select: { id: true, owner: true, name: true, url: true },
-      },
     },
   },
 } as const;
@@ -43,17 +40,10 @@ function isTicketRelationError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const maybe = error as {
     code?: unknown;
-    message?: unknown;
-    details?: unknown;
   };
   const code = typeof maybe.code === "string" ? maybe.code : "";
-  const message = typeof maybe.message === "string" ? maybe.message : "";
-  const details = typeof maybe.details === "string" ? maybe.details : "";
 
-  return (
-    code === "PGRST200" &&
-    (message.includes("Ticket") || details.includes("Ticket"))
-  );
+  return code.startsWith("PGRST2");
 }
 
 async function hydrateTickets(baseTickets: any[]) {
@@ -73,7 +63,7 @@ async function hydrateTickets(baseTickets: any[]) {
 
   const userIds = Array.from(new Set([...creatorIds, ...assigneeIds]));
 
-  const [users, clients, teams, projects] = await Promise.all([
+  const [users, clients, teams, projects, githubRepos] = await Promise.all([
     userIds.length
       ? db.user.findMany({
           where: { id: { in: userIds } },
@@ -100,9 +90,18 @@ async function hydrateTickets(baseTickets: any[]) {
             name: true,
             health: true,
             progress: true,
-            githubRepos: {
-              select: { id: true, owner: true, name: true, url: true },
-            },
+          },
+        })
+      : Promise.resolve([]),
+    projectIds.size
+      ? db.githubRepo.findMany({
+          where: { projectId: { in: Array.from(projectIds) } },
+          select: {
+            id: true,
+            owner: true,
+            name: true,
+            url: true,
+            projectId: true,
           },
         })
       : Promise.resolve([]),
@@ -112,6 +111,17 @@ async function hydrateTickets(baseTickets: any[]) {
   const clientById = new Map(clients.map((c: any) => [c.id, c]));
   const teamById = new Map(teams.map((t: any) => [t.id, t]));
   const projectById = new Map(projects.map((p: any) => [p.id, p]));
+  const reposByProjectId = new Map<string, any[]>();
+  for (const repo of githubRepos as any[]) {
+    const list = reposByProjectId.get(repo.projectId) ?? [];
+    list.push({
+      id: repo.id,
+      owner: repo.owner,
+      name: repo.name,
+      url: repo.url,
+    });
+    reposByProjectId.set(repo.projectId, list);
+  }
 
   return baseTickets.map((ticket: any) => ({
     ...ticket,
@@ -126,7 +136,14 @@ async function hydrateTickets(baseTickets: any[]) {
     client: ticket.clientId ? (clientById.get(ticket.clientId) ?? null) : null,
     team: ticket.teamId ? (teamById.get(ticket.teamId) ?? null) : null,
     project: ticket.projectId
-      ? (projectById.get(ticket.projectId) ?? null)
+      ? (() => {
+          const project = projectById.get(ticket.projectId);
+          if (!project) return null;
+          return {
+            ...project,
+            githubRepos: reposByProjectId.get(ticket.projectId) ?? [],
+          };
+        })()
       : null,
   }));
 }
