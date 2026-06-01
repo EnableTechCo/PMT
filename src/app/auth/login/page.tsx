@@ -101,8 +101,7 @@ function LoginPageContent() {
             </div>
             {email ? (
               <div className="mb-4 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
-                Invitation link loaded your email address. Click sign in to
-                continue.
+                Email matches. Click sign in to continue.
               </div>
             ) : null}
             {error && (
