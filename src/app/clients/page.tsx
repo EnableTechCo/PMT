@@ -170,6 +170,22 @@ export default function ClientsPage() {
     void fetchAvailableGithubRepos();
   };
 
+  const openCreateProjectWithoutClient = () => {
+    setSelectedClient(null);
+    setNewProject({
+      name: "",
+      description: "",
+      teamId: activeTeamId || teams[0]?.id || "",
+      progress: 0,
+      health: "GREEN",
+      status: "PLANNING",
+    });
+    setSelectedGithubRepos([]);
+    setGithubReposError("");
+    setShowProjectModal(true);
+    void fetchAvailableGithubRepos();
+  };
+
   const fetchAvailableGithubRepos = async () => {
     setLoadingGithubRepos(true);
     setGithubReposError("");
@@ -407,11 +423,6 @@ export default function ClientsPage() {
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedClient) {
-      setError("Please select a client");
-      return;
-    }
-
     if (!newProject.teamId) {
       setError("Please select a team before creating a project");
       return;
@@ -440,7 +451,7 @@ export default function ClientsPage() {
           teamDescription: newProject.description,
           githubRepos,
           teamId: newProject.teamId,
-          clientId: selectedClient.id,
+          clientId: selectedClient?.id ?? null,
           progress: newProject.progress,
           health: newProject.health,
           status: newProject.status,
@@ -507,14 +518,26 @@ export default function ClientsPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => setShowCreateModal(true)}
-            disabled={!canManageClients}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Add Client</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openCreateProjectWithoutClient}
+              disabled={!canManageClients}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
+            >
+              <FolderKanban className="h-4 w-4" />
+              <span>Add Project (No Client)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              disabled={!canManageClients}
+              className="btn-primary flex items-center space-x-2"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Add Client</span>
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -914,25 +937,35 @@ export default function ClientsPage() {
           </div>
         )}
 
-        {showProjectModal && selectedClient && (
+        {showProjectModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
               className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-              onClick={() => setShowProjectModal(false)}
+              onClick={() => {
+                setShowProjectModal(false);
+                setSelectedClient(null);
+              }}
             />
 
             <div className="relative w-full max-w-lg rounded-2xl border border-gray-200/80 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-gray-800/50 dark:bg-gray-900/95">
               <div className="flex items-center justify-between border-b border-gray-200 p-6 dark:border-gray-800/50">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                    Add Project for {selectedClient.name}
+                    {selectedClient
+                      ? `Add Project for ${selectedClient.name}`
+                      : "Add Project"}
                   </h2>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Link a new project directly to this client
+                    {selectedClient
+                      ? "Link a new project directly to this client"
+                      : "Create a project now and assign a client later"}
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowProjectModal(false)}
+                  onClick={() => {
+                    setShowProjectModal(false);
+                    setSelectedClient(null);
+                  }}
                   className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-white"
                   title="Close"
                 >
@@ -1060,7 +1093,10 @@ export default function ClientsPage() {
                 <div className="flex items-center justify-end space-x-3 border-t border-gray-200 pt-4 dark:border-gray-800/50">
                   <button
                     type="button"
-                    onClick={() => setShowProjectModal(false)}
+                    onClick={() => {
+                      setShowProjectModal(false);
+                      setSelectedClient(null);
+                    }}
                     className="btn-secondary"
                   >
                     Cancel

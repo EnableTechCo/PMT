@@ -22,6 +22,13 @@ type Project = {
   _count: { milestones: number; tickets: number };
 };
 
+type ClientOption = {
+  id: string;
+  name: string;
+  email: string;
+  invitationStatus?: string;
+};
+
 export default function ProjectsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -34,6 +41,86 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    description: "",
+    teamId: "",
+    clientId: "",
+  });
+
+  const loadClients = useCallback(async () => {
+    if (!user || user.role !== "SUPER_ADMIN") return;
+
+    setLoadingClients(true);
+    try {
+      const res = await fetch("/api/clients");
+      if (!res.ok) {
+        throw new Error("Failed to load clients");
+      }
+      const data = (await res.json()) as ClientOption[];
+      setClients(Array.isArray(data) ? data : []);
+    } catch {
+      setClients([]);
+    } finally {
+      setLoadingClients(false);
+    }
+  }, [user]);
+
+  const openCreateModal = useCallback(() => {
+    const defaultTeamId = activeTeamId || teams[0]?.id || "";
+    setCreateForm({
+      name: "",
+      description: "",
+      teamId: defaultTeamId,
+      clientId: "",
+    });
+    setShowCreateModal(true);
+    void loadClients();
+  }, [activeTeamId, teams, loadClients]);
+
+  const handleCreateProject = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      if (!createForm.name.trim() || !createForm.teamId) return;
+
+      setCreatingProject(true);
+      setError("");
+      try {
+        const res = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: createForm.name.trim(),
+            description: createForm.description.trim() || undefined,
+            teamDescription: createForm.description.trim() || undefined,
+            teamId: createForm.teamId,
+            clientId: createForm.clientId || null,
+          }),
+        });
+
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body.error || "Failed to create project");
+        }
+
+        setShowCreateModal(false);
+        await load();
+
+        if (body?.id) {
+          router.push(`/projects/${body.id}`);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to create project");
+      } finally {
+        setCreatingProject(false);
+      }
+    },
+    [createForm, load, router],
+  );
 
   const load = useCallback(async () => {
     if (!user || user.role === "CLIENT") return;
@@ -126,6 +213,15 @@ export default function ProjectsPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {user.role === "SUPER_ADMIN" && (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="rounded-lg border border-indigo-300 bg-indigo-600 px-4 py-2 text-sm text-white transition hover:bg-indigo-700"
+              >
+                New project
+              </button>
+            )}
             {user.role === "SUPER_ADMIN" && (
               <Link
                 href="/executive"
@@ -232,6 +328,138 @@ export default function ProjectsPage() {
           <p className="text-center text-gray-500">
             No projects for this filter.
           </p>
+        )}
+
+        {showCreateModal && user.role === "SUPER_ADMIN" && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowCreateModal(false)}
+            />
+            <div className="relative w-full max-w-lg rounded-2xl border border-gray-200/80 bg-white/95 p-6 shadow-2xl backdrop-blur-xl dark:border-gray-800/50 dark:bg-gray-900/95">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                Create Project
+              </h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                Client is optional. You can assign one now or later.
+              </p>
+
+              <form onSubmit={handleCreateProject} className="mt-5 space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Project Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={createForm.name}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        name: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                    placeholder="e.g. Q3 Onboarding Revamp"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Team *
+                  </label>
+                  <select
+                    required
+                    value={createForm.teamId}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        teamId: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">Select team</option>
+                    {teams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Client (Optional)
+                  </label>
+                  <select
+                    value={createForm.clientId}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        clientId: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">No client yet</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name}
+                        {client.invitationStatus === "INVITED_NOT_CONFIRMED"
+                          ? " (Invited)"
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {loadingClients && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Loading clients…
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Description
+                  </label>
+                  <textarea
+                    value={createForm.description}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        description: e.target.value,
+                      }))
+                    }
+                    rows={3}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                    placeholder="Project scope and notes"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={
+                      creatingProject ||
+                      !createForm.name.trim() ||
+                      !createForm.teamId
+                    }
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {creatingProject ? "Creating..." : "Create Project"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
       </div>
     </DashboardLayout>

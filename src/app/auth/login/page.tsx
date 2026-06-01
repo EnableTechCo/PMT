@@ -99,11 +99,6 @@ function LoginPageContent() {
                 Enable Tech PMT
               </div>
             </div>
-            {email ? (
-              <div className="mb-4 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
-                Email matches. Click sign in to continue.
-              </div>
-            ) : null}
             {error && (
               <motion.div
                 initial={{ opacity: 0, y: 8 }}

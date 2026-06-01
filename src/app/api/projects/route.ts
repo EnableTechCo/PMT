@@ -309,7 +309,11 @@ export async function POST(request: NextRequest) {
     const portfolioId =
       typeof body.portfolioId === "string" ? body.portfolioId : undefined;
     const clientId =
-      typeof body.clientId === "string" ? body.clientId : undefined;
+      typeof body.clientId === "string"
+        ? body.clientId.trim() || null
+        : body.clientId === null
+          ? null
+          : undefined;
     const githubRepoUrlRaw =
       typeof body.githubRepoUrl === "string" ? body.githubRepoUrl.trim() : "";
     const githubReposInput: unknown[] = Array.isArray(body.githubRepos)

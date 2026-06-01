@@ -31,10 +31,18 @@ type ProjectDetail = {
   progress: number;
   health: string;
   status: string;
+  client?: { id: string; name: string; email?: string } | null;
   team: { id: string; name: string };
   milestones: Milestone[];
   githubRepos?: Array<{ id: string; owner: string; name: string; url: string }>;
   _count: { tickets: number };
+};
+
+type ClientOption = {
+  id: string;
+  name: string;
+  email: string;
+  invitationStatus?: "NOT_INVITED" | "INVITED_NOT_CONFIRMED" | "ACTIVATED";
 };
 
 export default function ProjectDetailPage() {
@@ -44,9 +52,17 @@ export default function ProjectDetailPage() {
   const { user, loading: authLoading } = useAuth();
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
-  const [error, setError] = useState("");
+  const [pageError, setPageError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [assigningClient, setAssigningClient] = useState(false);
+  const [invitingClient, setInvitingClient] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ name: "", email: "" });
 
   useEffect(() => {
     if (authLoading || !user || user.role === "CLIENT") return;
@@ -56,7 +72,7 @@ export default function ProjectDetailPage() {
         if (!res.ok) throw new Error("Not found");
         setProject(await res.json());
       } catch {
-        setError("Could not load project.");
+        setPageError("Could not load project.");
       }
     })();
   }, [authLoading, user, id]);
@@ -108,6 +124,30 @@ export default function ProjectDetailPage() {
     return unsubscribe;
   }, [authLoading, user, id]);
 
+  useEffect(() => {
+    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+
+    void (async () => {
+      setLoadingClients(true);
+      try {
+        const res = await fetch("/api/clients");
+        if (!res.ok) {
+          throw new Error("Failed to load clients");
+        }
+        const data = (await res.json()) as ClientOption[];
+        setClients(Array.isArray(data) ? data : []);
+      } catch {
+        setClients([]);
+      } finally {
+        setLoadingClients(false);
+      }
+    })();
+  }, [authLoading, user]);
+
+  useEffect(() => {
+    setSelectedClientId(project?.client?.id ?? "");
+  }, [project?.client?.id]);
+
   const toggleMilestone = async (m: Milestone) => {
     const res = await fetch(`/api/milestones/${m.id}`, {
       method: "PATCH",
@@ -132,7 +172,7 @@ export default function ProjectDetailPage() {
     if (!project || user?.role !== "SUPER_ADMIN" || deleting) return;
 
     setDeleting(true);
-    setError("");
+    setActionError("");
     try {
       const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
       const body = await res.json().catch(() => ({}));
@@ -147,12 +187,105 @@ export default function ProjectDetailPage() {
       router.push("/projects");
       router.refresh();
     } catch (err) {
-      setError(
+      setActionError(
         err instanceof Error ? err.message : "Failed to delete project.",
       );
     } finally {
       setShowDeleteConfirm(false);
       setDeleting(false);
+    }
+  };
+
+  const assignClientToProject = async (clientId: string | null) => {
+    if (!project || user?.role !== "SUPER_ADMIN" || assigningClient) return;
+
+    setAssigningClient(true);
+    setActionError("");
+    setActionMessage("");
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.error || "Failed to update project client");
+      }
+
+      setProject(body as ProjectDetail);
+      setActionMessage(
+        clientId
+          ? "Client assigned to project."
+          : "Client removed from project.",
+      );
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Failed to update project client",
+      );
+    } finally {
+      setAssigningClient(false);
+    }
+  };
+
+  const handleAssignClient = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await assignClientToProject(selectedClientId || null);
+  };
+
+  const handleInviteAndAssign = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (user?.role !== "SUPER_ADMIN" || invitingClient) return;
+
+    const name = inviteForm.name.trim();
+    const email = inviteForm.email.trim().toLowerCase();
+    if (!name || !email) return;
+
+    setInvitingClient(true);
+    setActionError("");
+    setActionMessage("");
+    try {
+      const createRes = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, isInvited: true }),
+      });
+      const createBody = await createRes.json().catch(() => ({}));
+
+      if (!createRes.ok) {
+        throw new Error(createBody.error || "Failed to invite client");
+      }
+
+      const newClientId =
+        typeof createBody.id === "string" && createBody.id.length > 0
+          ? createBody.id
+          : "";
+
+      if (!newClientId) {
+        throw new Error("Client invited but could not resolve client id");
+      }
+
+      const refreshedClientsRes = await fetch("/api/clients");
+      if (refreshedClientsRes.ok) {
+        const refreshed = (await refreshedClientsRes.json()) as ClientOption[];
+        setClients(Array.isArray(refreshed) ? refreshed : []);
+      }
+
+      setSelectedClientId(newClientId);
+      setInviteForm({ name: "", email: "" });
+      await assignClientToProject(newClientId);
+
+      if (typeof createBody.warning === "string" && createBody.warning) {
+        setActionMessage(`Client created and assigned. ${createBody.warning}`);
+      }
+    } catch (err) {
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : "Failed to invite and assign client",
+      );
+    } finally {
+      setInvitingClient(false);
     }
   };
 
@@ -172,10 +305,10 @@ export default function ProjectDetailPage() {
     );
   }
 
-  if (error || !project) {
+  if (pageError || !project) {
     return (
       <DashboardLayout>
-        <p className="text-gray-600">{error || "Loading…"}</p>
+        <p className="text-gray-600">{pageError || "Loading..."}</p>
         <Link href="/projects" className="mt-4 text-indigo-600">
           Back to projects
         </Link>
@@ -189,6 +322,16 @@ export default function ProjectDetailPage() {
         <Link href="/projects" className="text-sm text-indigo-600">
           ← Projects
         </Link>
+        {actionError && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {actionError}
+          </div>
+        )}
+        {actionMessage && (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+            {actionMessage}
+          </div>
+        )}
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mt-4 mb-4">
             {project.name}
@@ -314,6 +457,94 @@ export default function ProjectDetailPage() {
           </div>
 
           <div className="space-y-6 mt-8">
+            {user.role === "SUPER_ADMIN" && (
+              <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Client Assignment
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Assign an existing or invited client to this project.
+                </p>
+
+                <form onSubmit={handleAssignClient} className="mt-4 space-y-3">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Linked Client
+                  </label>
+                  <select
+                    value={selectedClientId}
+                    onChange={(e) => setSelectedClientId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">No client yet</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name}
+                        {client.invitationStatus === "INVITED_NOT_CONFIRMED"
+                          ? " (Invited)"
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {loadingClients ? (
+                    <p className="text-xs text-gray-500">Loading clients...</p>
+                  ) : null}
+                  <button
+                    type="submit"
+                    disabled={assigningClient || loadingClients}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {assigningClient ? "Saving..." : "Save Client Assignment"}
+                  </button>
+                </form>
+
+                <div className="my-5 h-px bg-gray-200 dark:bg-gray-800" />
+
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Invite New Client And Assign
+                </h3>
+                <form
+                  onSubmit={handleInviteAndAssign}
+                  className="mt-3 space-y-3"
+                >
+                  <input
+                    type="text"
+                    required
+                    value={inviteForm.name}
+                    onChange={(e) =>
+                      setInviteForm((prev) => ({
+                        ...prev,
+                        name: e.target.value,
+                      }))
+                    }
+                    placeholder="Client name"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  />
+                  <input
+                    type="email"
+                    required
+                    value={inviteForm.email}
+                    onChange={(e) =>
+                      setInviteForm((prev) => ({
+                        ...prev,
+                        email: e.target.value,
+                      }))
+                    }
+                    placeholder="client@company.com"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  />
+                  <button
+                    type="submit"
+                    disabled={invitingClient}
+                    className="rounded-lg border border-emerald-300 bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {invitingClient
+                      ? "Inviting and assigning..."
+                      : "Invite And Assign"}
+                  </button>
+                </form>
+              </div>
+            )}
+
             <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 GitHub Repositories
