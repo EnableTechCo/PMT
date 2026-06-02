@@ -82,6 +82,14 @@ export default function ProjectDetailPage() {
   const [savingGithubRepos, setSavingGithubRepos] = useState(false);
   const [githubReposError, setGithubReposError] = useState("");
 
+  const projectTicketsUrl = (() => {
+    const params = new URLSearchParams({ projectId: id });
+    if (user?.role === "USER" && project?.team?.id) {
+      params.set("teamId", project.team.id);
+    }
+    return `/api/tickets?${params.toString()}`;
+  })();
+
   useEffect(() => {
     if (authLoading || !user || user.role === "CLIENT") return;
     void (async () => {
@@ -99,14 +107,14 @@ export default function ProjectDetailPage() {
     if (authLoading || !user || user.role === "CLIENT" || !project) return;
     void (async () => {
       try {
-        const res = await fetch(`/api/tickets?projectId=${id}`);
+        const res = await fetch(projectTicketsUrl);
         if (!res.ok) return;
         setTickets(await res.json());
       } catch {
         // ignore
       }
     })();
-  }, [authLoading, user, id, project]);
+  }, [authLoading, user, project, projectTicketsUrl]);
 
   useEffect(() => {
     if (authLoading || !user || user.role === "CLIENT") return;
@@ -125,7 +133,7 @@ export default function ProjectDetailPage() {
         try {
           const [projectRes, ticketsRes] = await Promise.all([
             fetch(`/api/projects/${id}`),
-            fetch(`/api/tickets?projectId=${id}`),
+            fetch(projectTicketsUrl),
           ]);
           if (projectRes.ok) {
             setProject(await projectRes.json());
@@ -140,7 +148,7 @@ export default function ProjectDetailPage() {
     });
 
     return unsubscribe;
-  }, [authLoading, user, id]);
+  }, [authLoading, user, id, projectTicketsUrl]);
 
   useEffect(() => {
     if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
@@ -664,37 +672,37 @@ export default function ProjectDetailPage() {
               </div>
             )}
 
-            {canManageProjectRepos ? (
-              <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  GitHub Repositories
-                </h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  Link repos at the project level so tickets can attach branches
-                  and pull requests.
-                </p>
-                <div className="mt-4 space-y-3">
-                  {project.githubRepos && project.githubRepos.length > 0 ? (
-                    project.githubRepos.map((repo) => (
-                      <a
-                        key={repo.id}
-                        href={repo.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition hover:border-brand-500 hover:bg-brand-50/50 dark:border-gray-800 dark:bg-white/5 dark:text-white"
-                      >
-                        <div className="font-semibold">
-                          {repo.owner}/{repo.name}
-                        </div>
-                        <div className="text-gray-500 text-xs">View repo</div>
-                      </a>
-                    ))
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-white/5">
-                      No GitHub repositories linked yet.
-                    </div>
-                  )}
-                </div>
+            <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                GitHub Repositories
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Link repos at the project level so tickets can attach branches
+                and pull requests.
+              </p>
+              <div className="mt-4 space-y-3">
+                {project.githubRepos && project.githubRepos.length > 0 ? (
+                  project.githubRepos.map((repo) => (
+                    <a
+                      key={repo.id}
+                      href={repo.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition hover:border-brand-500 hover:bg-brand-50/50 dark:border-gray-800 dark:bg-white/5 dark:text-white"
+                    >
+                      <div className="font-semibold">
+                        {repo.owner}/{repo.name}
+                      </div>
+                      <div className="text-gray-500 text-xs">View repo</div>
+                    </a>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-white/5">
+                    No GitHub repositories linked yet.
+                  </div>
+                )}
+              </div>
+              {canManageProjectRepos ? (
                 <button
                   type="button"
                   onClick={openRepoPicker}
@@ -702,8 +710,8 @@ export default function ProjectDetailPage() {
                 >
                   Link Project Repo
                 </button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         </div>
       </div>

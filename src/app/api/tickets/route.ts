@@ -32,6 +32,7 @@ const ticketInclude = {
       name: true,
       health: true,
       progress: true,
+      clientId: true,
     },
   },
 } as const;
@@ -90,6 +91,7 @@ async function hydrateTickets(baseTickets: any[]) {
             name: true,
             health: true,
             progress: true,
+            clientId: true,
           },
         })
       : Promise.resolve([]),
@@ -108,9 +110,35 @@ async function hydrateTickets(baseTickets: any[]) {
   ]);
 
   const userById = new Map(users.map((u: any) => [u.id, u]));
-  const clientById = new Map(clients.map((c: any) => [c.id, c]));
   const teamById = new Map(teams.map((t: any) => [t.id, t]));
-  const projectById = new Map(projects.map((p: any) => [p.id, p]));
+  const projectClientIds = new Set<string>();
+  for (const project of projects as any[]) {
+    if (project.clientId) projectClientIds.add(project.clientId);
+  }
+  const allClientIds = Array.from(
+    new Set([...Array.from(clientIds), ...Array.from(projectClientIds)]),
+  );
+
+  const allClients = allClientIds.length
+    ? await db.client.findMany({
+        where: { id: { in: allClientIds } },
+        select: { id: true, name: true, email: true },
+      })
+    : [];
+
+  const clientById = new Map(allClients.map((c: any) => [c.id, c]));
+  const projectById = new Map(
+    (projects as any[]).map((p) => [
+      p.id,
+      {
+        id: p.id,
+        name: p.name,
+        health: p.health,
+        progress: p.progress,
+        client: p.clientId ? (clientById.get(p.clientId) ?? null) : null,
+      },
+    ]),
+  );
   const reposByProjectId = new Map<string, any[]>();
   for (const repo of githubRepos as any[]) {
     const list = reposByProjectId.get(repo.projectId) ?? [];

@@ -61,6 +61,11 @@ interface Ticket {
   project?: {
     id: string;
     name: string;
+    client?: {
+      id: string;
+      name: string;
+      email: string;
+    } | null;
   } | null;
 }
 
@@ -191,6 +196,9 @@ function SortableTicket({
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs text-gray-500">
               {ticket.client?.name || "No client"}
+                {ticket.client?.name ||
+                  ticket.project?.client?.name ||
+                  "No assigned client"}
             </div>
             <div className="text-xs text-gray-500">
               {new Date(ticket.createdAt).toLocaleDateString()}
@@ -217,7 +225,9 @@ function DraggedTicket({ ticket }: { ticket: Ticket }) {
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="text-gray-500 text-xs">
-            {ticket.client?.name || "No client"}
+            {ticket.client?.name ||
+              ticket.project?.client?.name ||
+              "No assigned client"}
           </div>
           <div className="text-gray-500 text-xs">
             {new Date(ticket.createdAt).toLocaleDateString()}
