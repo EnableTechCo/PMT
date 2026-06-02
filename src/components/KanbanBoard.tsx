@@ -58,6 +58,10 @@ interface Ticket {
     id: string;
     name: string;
   } | null;
+  project?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 interface KanbanBoardProps {
@@ -180,12 +184,17 @@ function SortableTicket({
           </button>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="text-xs text-gray-500">
-            {ticket.client?.name || "No client"}
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            {ticket.project?.name || "No project"}
           </div>
-          <div className="text-xs text-gray-500">
-            {new Date(ticket.createdAt).toLocaleDateString()}
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-gray-500">
+              {ticket.client?.name || "No client"}
+            </div>
+            <div className="text-xs text-gray-500">
+              {new Date(ticket.createdAt).toLocaleDateString()}
+            </div>
           </div>
         </div>
       </div>
@@ -202,12 +211,17 @@ function DraggedTicket({ ticket }: { ticket: Ticket }) {
         </h4>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="text-gray-500 text-xs">
-          {ticket.client?.name || "No client"}
+      <div className="space-y-2">
+        <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
+          {ticket.project?.name || "No project"}
         </div>
-        <div className="text-gray-500 text-xs">
-          {new Date(ticket.createdAt).toLocaleDateString()}
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-gray-500 text-xs">
+            {ticket.client?.name || "No client"}
+          </div>
+          <div className="text-gray-500 text-xs">
+            {new Date(ticket.createdAt).toLocaleDateString()}
+          </div>
         </div>
       </div>
     </div>

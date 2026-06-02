@@ -59,6 +59,7 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const canManageProjectRepos = isSuperAdmin;
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [pageError, setPageError] = useState("");
@@ -663,7 +664,7 @@ export default function ProjectDetailPage() {
               </div>
             )}
 
-            {!isSuperAdmin ? (
+            {canManageProjectRepos ? (
               <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                   GitHub Repositories
@@ -707,7 +708,7 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {!isSuperAdmin && showRepoPicker && (
+      {canManageProjectRepos && showRepoPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-800 dark:bg-[#111217]">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
