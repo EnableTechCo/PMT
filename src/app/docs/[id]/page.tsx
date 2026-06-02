@@ -13,9 +13,9 @@ interface Document {
   content: string;
   createdAt: string;
   updatedAt: string;
-  author: { id: string; name: string };
-  team: { id: string; name: string };
-  project?: { id: string; name: string };
+  author: { id: string; name: string } | null;
+  team: { id: string; name: string } | null;
+  project?: { id: string; name: string } | null;
 }
 
 export default function DocEditorPage({
@@ -132,7 +132,7 @@ export default function DocEditorPage({
         <div className="flex items-center gap-6 text-sm text-gray-500 bg-white dark:bg-[#1c1c24] p-4 rounded-xl border border-gray-200 dark:border-gray-800">
           <div className="flex items-center gap-2">
             <User className="w-4 h-4" />
-            <span>Author: {doc.author.name}</span>
+            <span>Author: {doc.author?.name ?? "Unknown author"}</span>
           </div>
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4" />

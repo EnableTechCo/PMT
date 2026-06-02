@@ -12,9 +12,9 @@ interface Document {
   title: string;
   createdAt: string;
   updatedAt: string;
-  author: { id: string; name: string };
-  team: { id: string; name: string };
-  project?: { id: string; name: string };
+  author: { id: string; name: string } | null;
+  team: { id: string; name: string } | null;
+  project?: { id: string; name: string } | null;
 }
 
 export default function DocsPage() {
@@ -182,7 +182,7 @@ export default function DocsPage() {
                 <div className="mt-auto pt-4 flex flex-col gap-2 text-xs text-gray-500">
                   <div className="flex items-center gap-2">
                     <User className="w-3.5 h-3.5" />
-                    <span>{doc.author.name}</span>
+                    <span>{doc.author?.name ?? "Unknown author"}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="w-3.5 h-3.5" />

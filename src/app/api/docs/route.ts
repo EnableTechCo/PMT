@@ -3,11 +3,84 @@ import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { canAccessTeam, teamIdsForUser } from "@/lib/access";
 
+const documentInclude = {
+  author: { select: { id: true, name: true } },
+  team: { select: { id: true, name: true } },
+  project: { select: { id: true, name: true } },
+} as const;
+
 function isDocRelationError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const maybe = error as { code?: unknown };
   const code = typeof maybe.code === "string" ? maybe.code : "";
   return code.startsWith("PGRST2");
+}
+
+function parseMissingDocumentColumn(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const maybe = error as { code?: unknown; message?: unknown };
+  const message = typeof maybe.message === "string" ? maybe.message : "";
+
+  if (maybe.code === "PGRST204") {
+    const match = message.match(/Could not find the '([^']+)' column/);
+    return match?.[1] ?? null;
+  }
+
+  if (maybe.code === "42703") {
+    // Example: column Document.teamId does not exist
+    const match = message.match(
+      /column\s+(?:"?Document"?\.)?"?([A-Za-z0-9_]+)"?\s+does not exist/i,
+    );
+    return match?.[1] ?? null;
+  }
+
+  return null;
+}
+
+async function findDocumentsWithWhereFallback(
+  initialWhere: Record<string, unknown>,
+  options: {
+    includeRelated: boolean;
+    strictTeamScope: boolean;
+    fallbackAuthorId?: string;
+  },
+) {
+  const where: Record<string, unknown> = { ...initialWhere };
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      if (options.includeRelated) {
+        return await db.document.findMany({
+          where,
+          orderBy: { updatedAt: "desc" },
+          include: documentInclude,
+        });
+      }
+
+      return await db.document.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+      });
+    } catch (error) {
+      const missingColumn = parseMissingDocumentColumn(error);
+      if (missingColumn && missingColumn in where) {
+        if (missingColumn === "teamId" && options.strictTeamScope) {
+          // If teamId is unavailable, degrade to "own docs only" scope.
+          delete where.teamId;
+          if (options.fallbackAuthorId) {
+            where.authorId = options.fallbackAuthorId;
+            continue;
+          }
+          return [];
+        }
+        delete where[missingColumn];
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return [];
 }
 
 async function hydrateDocuments(baseDocs: any[]) {
@@ -83,21 +156,20 @@ export async function GET(request: NextRequest) {
     }
 
     let docs: any[];
+    const strictTeamScope = sessionUser.role === "USER";
     try {
-      docs = await db.document.findMany({
-        where,
-        orderBy: { updatedAt: "desc" },
-        include: {
-          author: { select: { id: true, name: true } },
-          team: { select: { id: true, name: true } },
-          project: { select: { id: true, name: true } },
-        },
+      docs = await findDocumentsWithWhereFallback(where, {
+        includeRelated: true,
+        strictTeamScope,
+        fallbackAuthorId: strictTeamScope ? sessionUser.id : undefined,
       });
     } catch (error) {
-      if (!isDocRelationError(error)) throw error;
-      const baseDocs = await db.document.findMany({
-        where,
-        orderBy: { updatedAt: "desc" },
+      const missingColumn = parseMissingDocumentColumn(error);
+      if (!isDocRelationError(error) && !missingColumn) throw error;
+      const baseDocs = await findDocumentsWithWhereFallback(where, {
+        includeRelated: false,
+        strictTeamScope,
+        fallbackAuthorId: strictTeamScope ? sessionUser.id : undefined,
       });
       docs = await hydrateDocuments(baseDocs);
     }
@@ -134,15 +206,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const doc = await db.document.create({
-      data: {
-        title,
-        content,
-        teamId,
-        projectId: projectId || null,
-        authorId: sessionUser.id,
-      },
-    });
+    const createData: Record<string, unknown> = {
+      title,
+      content,
+      teamId,
+      projectId: projectId || null,
+      authorId: sessionUser.id,
+    };
+
+    let doc: any = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        doc = await db.document.create({
+          data: createData,
+        });
+        break;
+      } catch (error) {
+        const missingColumn = parseMissingDocumentColumn(error);
+        if (!missingColumn || !(missingColumn in createData)) {
+          throw error;
+        }
+        delete createData[missingColumn];
+      }
+    }
+
+    if (!doc) {
+      throw new Error("Failed to create doc");
+    }
 
     return NextResponse.json(doc);
   } catch (error) {
