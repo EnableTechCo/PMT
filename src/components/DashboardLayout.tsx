@@ -379,7 +379,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                               className={cn(
                                 "flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium",
                                 isChildActive
-                                  ? "bg-brand-600/[0.12] text-brand-800 dark:bg-brand-600/15 dark:text-brand-200"
+                                  ? "bg-gray-100 text-gray-900 ring-1 ring-gray-300 shadow-sm dark:bg-brand-600/15 dark:text-brand-200 dark:ring-brand-400/25"
                                   : "text-gray-600 hover:bg-white/80 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
                               )}
                               onClick={() => setSidebarOpen(false)}
@@ -402,7 +402,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   className={cn(
                     "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out",
                     isActive
-                      ? "bg-brand-600/[0.12] text-brand-800 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)] ring-1 ring-brand-500/20 dark:bg-brand-600/15 dark:text-brand-200 dark:ring-brand-400/25"
+                      ? "bg-gray-100 text-gray-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)] ring-1 ring-gray-300 dark:bg-brand-600/15 dark:text-brand-200 dark:ring-brand-400/25"
                       : "text-gray-600 hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
                   )}
                   onClick={() => setSidebarOpen(false)}
@@ -411,7 +411,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     className={cn(
                       "h-[18px] w-[18px] shrink-0 transition-transform duration-200 ease-out group-hover:scale-110",
                       isActive
-                        ? "text-brand-600 dark:text-brand-400"
+                        ? "text-gray-800 dark:text-brand-400"
                         : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
                     )}
                   />
@@ -425,7 +425,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               );
             })}
 
-            {!isClient ? (
+            {user?.role !== "SUPER_ADMIN" && !isClient ? (
               <div className="pt-1">
                 <button
                   type="button"
@@ -591,7 +591,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       className={cn(
                         "group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out",
                         isNavActive(item)
-                          ? "bg-brand-600/[0.08] text-brand-800 ring-1 ring-brand-500/15 dark:bg-brand-600/10 dark:text-brand-200 dark:ring-brand-400/20"
+                          ? "bg-gray-100 text-gray-900 ring-1 ring-gray-300 shadow-sm dark:bg-brand-600/10 dark:text-brand-200 dark:ring-brand-400/20"
                           : "text-gray-600 hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
                       )}
                     >
@@ -599,7 +599,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         className={cn(
                           "h-[18px] w-[18px] shrink-0",
                           isNavActive(item)
-                            ? "text-brand-600 dark:text-brand-400"
+                            ? "text-gray-800 dark:text-brand-400"
                             : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
                         )}
                       />
@@ -637,7 +637,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                               className={cn(
                                 "flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium",
                                 isChildActive
-                                  ? "bg-brand-600/[0.12] text-brand-800 dark:bg-brand-600/15 dark:text-brand-200"
+                                  ? "bg-gray-100 text-gray-900 ring-1 ring-gray-300 shadow-sm dark:bg-brand-600/15 dark:text-brand-200 dark:ring-brand-400/25"
                                   : "text-gray-600 hover:bg-white/80 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
                               )}
                             >
@@ -681,7 +681,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               );
             })}
 
-            {!isClient ? (
+            {user?.role !== "SUPER_ADMIN" && !isClient ? (
               <div className="pt-1">
                 <button
                   type="button"
@@ -896,7 +896,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
             {/* Right side - Actions and User */}
             <div className="flex items-center space-x-4">
-              {!isClient ? (
+              {user?.role !== "SUPER_ADMIN" && !isClient ? (
                 <div className="relative">
                   <button
                     type="button"

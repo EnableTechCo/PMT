@@ -58,6 +58,7 @@ export default function ProjectDetailPage() {
   const id = params.id as string;
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [pageError, setPageError] = useState("");
@@ -501,74 +502,76 @@ export default function ProjectDetailPage() {
               </ul>
             </div>
 
-            <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Project tickets
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    {tickets.length} ticket{tickets.length === 1 ? "" : "s"}{" "}
-                    linked to this project.
-                  </p>
+            {!isSuperAdmin ? (
+              <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Project tickets
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                      {tickets.length} ticket{tickets.length === 1 ? "" : "s"}{" "}
+                      linked to this project.
+                    </p>
+                  </div>
+                  <Link
+                    href="/tickets"
+                    className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                  >
+                    View all tickets
+                  </Link>
                 </div>
-                <Link
-                  href="/tickets"
-                  className="text-sm font-medium text-brand-600 hover:text-brand-700"
-                >
-                  View all tickets
-                </Link>
-              </div>
 
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-800">
-                      <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
-                        Ticket
-                      </th>
-                      <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
-                        Status
-                      </th>
-                      <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
-                        Assignee
-                      </th>
-                      <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
-                        Created
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tickets.map((ticket) => (
-                      <tr
-                        key={ticket.id}
-                        className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5 transition-colors"
-                      >
-                        <td className="py-4 pr-6 text-sm text-gray-900 dark:text-white">
-                          <Link
-                            href={`/tickets/${ticket.id}`}
-                            className="font-medium hover:text-brand-600"
-                          >
-                            {ticket.title}
-                          </Link>
-                        </td>
-                        <td className="py-4 pr-6 text-sm text-gray-700 dark:text-gray-300">
-                          {ticket.status
-                            .replace(/_/g, " ")
-                            .replace(/\b\w/g, (c) => c.toUpperCase())}
-                        </td>
-                        <td className="py-4 pr-6 text-sm text-gray-700 dark:text-gray-300">
-                          {ticket.assignee?.name || "Unassigned"}
-                        </td>
-                        <td className="py-4 text-sm text-gray-700 dark:text-gray-300">
-                          {new Date(ticket.createdAt).toLocaleDateString()}
-                        </td>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-800">
+                        <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                          Ticket
+                        </th>
+                        <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                          Status
+                        </th>
+                        <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                          Assignee
+                        </th>
+                        <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                          Created
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {tickets.map((ticket) => (
+                        <tr
+                          key={ticket.id}
+                          className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5 transition-colors"
+                        >
+                          <td className="py-4 pr-6 text-sm text-gray-900 dark:text-white">
+                            <Link
+                              href={`/tickets/${ticket.id}`}
+                              className="font-medium hover:text-brand-600"
+                            >
+                              {ticket.title}
+                            </Link>
+                          </td>
+                          <td className="py-4 pr-6 text-sm text-gray-700 dark:text-gray-300">
+                            {ticket.status
+                              .replace(/_/g, " ")
+                              .replace(/\b\w/g, (c) => c.toUpperCase())}
+                          </td>
+                          <td className="py-4 pr-6 text-sm text-gray-700 dark:text-gray-300">
+                            {ticket.assignee?.name || "Unassigned"}
+                          </td>
+                          <td className="py-4 text-sm text-gray-700 dark:text-gray-300">
+                            {new Date(ticket.createdAt).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
 
           <div className="space-y-6 mt-8">
@@ -662,49 +665,51 @@ export default function ProjectDetailPage() {
               </div>
             )}
 
-            <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                GitHub Repositories
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Link repos at the project level so tickets can attach branches
-                and pull requests.
-              </p>
-              <div className="mt-4 space-y-3">
-                {project.githubRepos && project.githubRepos.length > 0 ? (
-                  project.githubRepos.map((repo) => (
-                    <a
-                      key={repo.id}
-                      href={repo.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition hover:border-brand-500 hover:bg-brand-50/50 dark:border-gray-800 dark:bg-white/5 dark:text-white"
-                    >
-                      <div className="font-semibold">
-                        {repo.owner}/{repo.name}
-                      </div>
-                      <div className="text-gray-500 text-xs">View repo</div>
-                    </a>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-white/5">
-                    No GitHub repositories linked yet.
-                  </div>
-                )}
+            {!isSuperAdmin ? (
+              <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  GitHub Repositories
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Link repos at the project level so tickets can attach branches
+                  and pull requests.
+                </p>
+                <div className="mt-4 space-y-3">
+                  {project.githubRepos && project.githubRepos.length > 0 ? (
+                    project.githubRepos.map((repo) => (
+                      <a
+                        key={repo.id}
+                        href={repo.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition hover:border-brand-500 hover:bg-brand-50/50 dark:border-gray-800 dark:bg-white/5 dark:text-white"
+                      >
+                        <div className="font-semibold">
+                          {repo.owner}/{repo.name}
+                        </div>
+                        <div className="text-gray-500 text-xs">View repo</div>
+                      </a>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-white/5">
+                      No GitHub repositories linked yet.
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={openRepoPicker}
+                  className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700"
+                >
+                  Link Project Repo
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={openRepoPicker}
-                className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700"
-              >
-                Link Project Repo
-              </button>
-            </div>
+            ) : null}
           </div>
         </div>
       </div>
 
-      {showRepoPicker && (
+      {!isSuperAdmin && showRepoPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-800 dark:bg-[#111217]">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">

@@ -304,8 +304,8 @@ export default function CreateTicketModal({
                   })),
                 ]}
                 className="w-full"
-                triggerClassName="rounded-none border-slate-700 bg-slate-900 text-white"
-                menuClassName="bg-slate-950 text-slate-100"
+                triggerClassName="rounded-none border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800 focus:border-brand-500 focus:ring-brand-500/20"
+                menuClassName="bg-[#0f1116] text-slate-100"
               />
             </div>
           )}
@@ -342,8 +342,8 @@ export default function CreateTicketModal({
                 }
                 disabled={isLoadingAssignees}
                 className="w-full"
-                triggerClassName="rounded-none border-slate-700 bg-slate-900 text-white"
-                menuClassName="bg-slate-950 text-slate-100"
+                triggerClassName="rounded-none border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800 focus:border-brand-500 focus:ring-brand-500/20"
+                menuClassName="bg-[#0f1116] text-slate-100"
               />
             </div>
           )}
@@ -383,8 +383,8 @@ export default function CreateTicketModal({
               disabled={isLoadingClients || clients.length === 0}
               placeholder="No client selected"
               className="w-full"
-              triggerClassName="rounded-none border border-slate-700 bg-slate-900 text-slate-100"
-              menuClassName="bg-slate-950 text-slate-100"
+              triggerClassName="rounded-none border border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800 focus:border-brand-500 focus:ring-brand-500/20"
+              menuClassName="bg-[#0f1116] text-slate-100"
             />
             {!formData.clientId ? (
               <p className="mt-2 text-xs text-slate-400">
@@ -428,8 +428,8 @@ export default function CreateTicketModal({
                       ]
               }
               className="w-full"
-              triggerClassName="rounded-none border-slate-700 bg-slate-900 text-white disabled:cursor-not-allowed disabled:opacity-50"
-              menuClassName="bg-slate-950 text-slate-100"
+              triggerClassName="rounded-none border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800 focus:border-brand-500 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              menuClassName="bg-[#0f1116] text-slate-100"
             />
 
             {formData.clientId &&
@@ -526,8 +526,8 @@ export default function CreateTicketModal({
                     label: priority.label,
                   }))}
                   className="w-full"
-                  triggerClassName="rounded-none border-slate-700 bg-slate-900 text-white"
-                  menuClassName="bg-slate-950 text-slate-100"
+                  triggerClassName="rounded-none border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800 focus:border-brand-500 focus:ring-brand-500/20"
+                  menuClassName="bg-[#0f1116] text-slate-100"
                 />
               </div>
 

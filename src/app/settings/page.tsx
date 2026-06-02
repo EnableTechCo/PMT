@@ -122,6 +122,12 @@ function SettingsPageContent() {
   }, [user]);
 
   useEffect(() => {
+    if (isSuperAdmin && activeTab === "security") {
+      setActiveTab("github");
+    }
+  }, [activeTab, isSuperAdmin]);
+
+  useEffect(() => {
     const githubStatus = searchParams.get("github");
     if (!githubStatus) return;
 
@@ -299,18 +305,20 @@ function SettingsPageContent() {
               <Github className="w-4 h-4" />
               GitHub Integration
             </button>
-            <button
-              onClick={() => setActiveTab("security")}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
-                activeTab === "security"
-                  ? "bg-brand-600/[0.12] text-brand-800 ring-1 ring-brand-500/20 dark:bg-brand-600/15 dark:text-brand-200"
-                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5",
-              )}
-            >
-              <Shield className="w-4 h-4" />
-              Security
-            </button>
+            {!isSuperAdmin ? (
+              <button
+                onClick={() => setActiveTab("security")}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                  activeTab === "security"
+                    ? "bg-brand-600/[0.12] text-brand-800 ring-1 ring-brand-500/20 dark:bg-brand-600/15 dark:text-brand-200"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5",
+                )}
+              >
+                <Shield className="w-4 h-4" />
+                Security
+              </button>
+            ) : null}
             {isSuperAdmin ? (
               <button
                 onClick={() => setActiveTab("backup")}
@@ -389,7 +397,7 @@ function SettingsPageContent() {
                     <p className="text-sm text-gray-500">
                       Use GitHub access to sync branches, tickets, and PR status
                     </p>
-                    {githubSource === "system" ? (
+                    {githubSource === "system" && !isSuperAdmin ? (
                       <p className="mt-1 text-xs text-gray-500">
                         Department-managed GitHub access is active for every
                         signed-in user.
@@ -530,34 +538,7 @@ function SettingsPageContent() {
                       </div>
 
                       <div className="flex flex-col items-stretch gap-2 sm:items-end">
-                        <button
-                          type="button"
-                          onClick={handleOAuthConnect}
-                          disabled={connecting}
-                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-                        >
-                          <Github className="w-4 h-4" />
-                          Connect another account
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowSwitchGithubForm((prev) => !prev)
-                          }
-                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-300 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-800 dark:text-brand-300 dark:hover:bg-brand-950/30"
-                        >
-                          <Key className="w-4 h-4" />
-                          {showSwitchGithubForm
-                            ? "Hide token form"
-                            : "Use personal token"}
-                        </button>
-
-                        {githubSource === "system" ? (
-                          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300">
-                            Managed by department settings
-                          </div>
-                        ) : (
+                        {githubSource !== "system" ? (
                           <button
                             onClick={() => setShowDisconnectConfirm(true)}
                             disabled={connecting}
@@ -566,11 +547,11 @@ function SettingsPageContent() {
                             <Trash2 className="w-4 h-4" />
                             Disconnect Account
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 
-                    {showSwitchGithubForm ? (
+                    {!isSuperAdmin && showSwitchGithubForm ? (
                       <div className="space-y-2 rounded-xl border border-gray-200 bg-slate-50 p-4 dark:border-gray-800 dark:bg-[#13131a]">
                         <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                           Connect using personal token
@@ -718,7 +699,7 @@ function SettingsPageContent() {
               </div>
             )}
 
-            {activeTab === "security" && (
+            {activeTab === "security" && !isSuperAdmin && (
               <div className="bg-white dark:bg-[#1c1c24] border border-gray-200 dark:border-gray-800 p-6 rounded-2xl shadow-card space-y-6">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">
