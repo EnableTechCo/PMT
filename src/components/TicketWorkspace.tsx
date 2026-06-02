@@ -71,6 +71,12 @@ interface ClientObligation {
   createdAt: string;
 }
 
+interface AssignableUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -116,6 +122,8 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [loadingPRs, setLoadingPRs] = useState(false);
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [loadingAssignableUsers, setLoadingAssignableUsers] = useState(false);
 
   const [activeRepo, setActiveRepo] = useState<{
     owner: string;
@@ -197,6 +205,42 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
 
     return unsubscribe;
   }, [authLoading, user, load, loadObligations]);
+
+  useEffect(() => {
+    if (authLoading || !user || user.role === "CLIENT") return;
+    const teamId = (ticket as { team?: { id: string } | null } | null)?.team
+      ?.id;
+    if (!teamId) {
+      setAssignableUsers([]);
+      return;
+    }
+
+    void (async () => {
+      setLoadingAssignableUsers(true);
+      try {
+        const res = await fetch(`/api/teams/${teamId}/members`);
+        if (!res.ok) {
+          setAssignableUsers([]);
+          return;
+        }
+        const body = (await res.json()) as {
+          members?: Array<{ userId: string; name: string; email: string }>;
+        };
+        const members = Array.isArray(body.members) ? body.members : [];
+        setAssignableUsers(
+          members.map((member) => ({
+            id: member.userId,
+            name: member.name,
+            email: member.email,
+          })),
+        );
+      } catch {
+        setAssignableUsers([]);
+      } finally {
+        setLoadingAssignableUsers(false);
+      }
+    })();
+  }, [authLoading, user, ticket]);
 
   const loadBranches = async (owner: string, repo: string) => {
     setLoadingBranches(true);
@@ -354,17 +398,23 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
 
   const patchTicket = async (updates: Record<string, unknown>) => {
     setSaving(true);
+    setError("");
     try {
       const res = await fetch(`/api/tickets/${ticketId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
-      if (!res.ok) throw new Error("Save failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof body.error === "string" ? body.error : "Save failed",
+        );
+      }
       const data = await res.json();
       setTicket(data);
-    } catch {
-      setError("Save failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -1231,6 +1281,35 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                     }))}
                     className="w-full"
                     triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-gray-500">Assignee</label>
+                  <SelectMenu
+                    value={t.assignee?.id ?? "__unassigned__"}
+                    onChange={(value) => {
+                      void patchTicket({
+                        assigneeId: value === "__unassigned__" ? null : value,
+                      });
+                    }}
+                    disabled={!canEdit || user.role === "CLIENT"}
+                    options={[
+                      {
+                        value: "__unassigned__",
+                        label: "Unassigned",
+                      },
+                      ...assignableUsers.map((member) => ({
+                        value: member.id,
+                        label: `${member.name}`,
+                      })),
+                    ]}
+                    className="w-full"
+                    triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                    placeholder={
+                      loadingAssignableUsers
+                        ? "Loading assignees..."
+                        : "Select assignee"
+                    }
                   />
                 </div>
                 <div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -195,10 +195,9 @@ function SortableTicket({
           </div>
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs text-gray-500">
-              {ticket.client?.name || "No client"}
-                {ticket.client?.name ||
-                  ticket.project?.client?.name ||
-                  "No assigned client"}
+              {ticket.client?.name ||
+                ticket.project?.client?.name ||
+                "No assigned client"}
             </div>
             <div className="text-xs text-gray-500">
               {new Date(ticket.createdAt).toLocaleDateString()}
@@ -225,9 +224,7 @@ function DraggedTicket({ ticket }: { ticket: Ticket }) {
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="text-gray-500 text-xs">
-            {ticket.client?.name ||
-              ticket.project?.client?.name ||
-              "No assigned client"}
+            {ticket.client?.name || ticket.project?.client?.name}
           </div>
           <div className="text-gray-500 text-xs">
             {new Date(ticket.createdAt).toLocaleDateString()}
@@ -267,6 +264,15 @@ export default function KanbanBoard({
   onCreateTicket,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const scroller = boardScrollRef.current;
+    if (!scroller) return;
+
+    // Always land on the first kanban column when the board mounts.
+    scroller.scrollTo({ left: 0, behavior: "auto" });
+  }, []);
 
   const groupedTickets = tickets.reduce(
     (acc, ticket) => {
@@ -332,7 +338,10 @@ export default function KanbanBoard({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="hover-scrollbar flex gap-6 overflow-x-auto pb-6 snap-x">
+      <div
+        ref={boardScrollRef}
+        className="hover-scrollbar flex gap-6 overflow-x-auto pb-6 snap-x"
+      >
         {Object.entries(groupedTickets).map(([status, tickets]) => {
           const config = statusConfig[status as keyof typeof statusConfig];
           const StatusIcon = config.icon;

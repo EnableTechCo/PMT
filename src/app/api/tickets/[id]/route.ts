@@ -61,7 +61,6 @@ function isTicketRelationError(error: unknown): boolean {
 async function loadTicketForAuth(id: string) {
   return db.ticket.findUnique({
     where: { id },
-    include: { team: true },
   });
 }
 

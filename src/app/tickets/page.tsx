@@ -44,7 +44,7 @@ interface Ticket {
     id: string;
     name: string;
     email: string;
-  };
+  } | null;
   client?: {
     id: string;
     name: string;
@@ -322,7 +322,15 @@ export default function TicketsPage() {
   }, [searchQuery, statusFilter, priorityFilter, activeTeamId, isAllTeams]);
 
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
+    const previousTickets = tickets;
     try {
+      setError("");
+      setTickets((prev) =>
+        prev.map((ticket) =>
+          ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket,
+        ),
+      );
+
       const response = await fetch(`/api/tickets/${ticketId}`, {
         method: "PATCH",
         headers: {
@@ -332,20 +340,56 @@ export default function TicketsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update ticket");
+        const body = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to update ticket",
+        );
       }
 
-      fetchTickets();
-    } catch {}
+      await fetchTickets();
+    } catch (err) {
+      setTickets(previousTickets);
+      setError(err instanceof Error ? err.message : "Failed to update ticket");
+    }
   };
 
   const handleAssigneeChange = async (
     ticketId: string,
     nextAssigneeId: string,
   ) => {
+    const previousTickets = tickets;
     try {
       const assigneeId =
         nextAssigneeId === "__unassigned__" ? null : nextAssigneeId;
+      const selectedAssignee =
+        assigneeId === null
+          ? null
+          : (assignableUsers.find((member) => member.id === assigneeId) ??
+            null);
+
+      setError("");
+      setTickets((prev) =>
+        prev.map((ticket): Ticket => {
+          if (ticket.id !== ticketId) return ticket;
+
+          if (selectedAssignee) {
+            return {
+              ...ticket,
+              assignee: {
+                id: selectedAssignee.id,
+                name: selectedAssignee.name,
+                email: selectedAssignee.email,
+              },
+            };
+          }
+
+          const { assignee: _assignee, ...rest } = ticket;
+          return rest as Ticket;
+        }),
+      );
+
       const response = await fetch(`/api/tickets/${ticketId}`, {
         method: "PATCH",
         headers: {
@@ -355,11 +399,21 @@ export default function TicketsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update assignee");
+        const body = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to update assignee",
+        );
       }
 
-      fetchTickets();
-    } catch {}
+      await fetchTickets();
+    } catch (err) {
+      setTickets(previousTickets);
+      setError(
+        err instanceof Error ? err.message : "Failed to update assignee",
+      );
+    }
   };
 
   useEffect(() => {
@@ -729,7 +783,7 @@ export default function TicketsPage() {
                                 },
                                 ...assignableUsers.map((member) => ({
                                   value: member.id,
-                                  label: `Assignee: ${member.name} (${member.email})`,
+                                  label: `${member.name}`,
                                 })),
                               ]}
                               className="w-full"
@@ -773,6 +827,13 @@ export default function TicketsPage() {
                       <div className="flex items-center space-x-2 text-sm text-gray-400">
                         <Building className="w-4 h-4" />
                         <span>{ticket.client?.name || "No client"}</span>
+                      </div>
+
+                      {/* Project */}
+
+                      <div className="flex items-center space-x-2 text-sm text-gray-400">
+                        <ListTodo className="w-4 h-4" />
+                        <span>{ticket.project?.name || "No project"}</span>
                       </div>
 
                       <div className="flex items-center space-x-2 text-sm text-gray-400">

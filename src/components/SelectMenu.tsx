@@ -49,12 +49,24 @@ export function SelectMenu({
       const trigger = triggerRef.current;
       if (!trigger) return;
       const rect = trigger.getBoundingClientRect();
+      const maxMenuHeight = 240;
+      const viewportPadding = 8;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const openUpward =
+        spaceBelow < maxMenuHeight + 8 && spaceAbove > spaceBelow;
+
+      const top = openUpward
+        ? Math.max(viewportPadding, rect.top - maxMenuHeight - 4)
+        : rect.bottom + 4;
+
       setMenuStyle({
         position: "fixed",
-        top: rect.bottom + 4,
+        top,
         left: rect.left,
         width: rect.width,
         zIndex: 1000,
+        maxHeight: maxMenuHeight,
       });
     };
 
@@ -73,14 +85,21 @@ export function SelectMenu({
 
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
+    const onScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      // Ignore menu-internal scroll events so list scrolling stays smooth.
+      if (target && menuRef.current?.contains(target)) return;
+      updatePosition();
+    };
+
     window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("scroll", onScroll, true);
 
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
 
@@ -135,7 +154,7 @@ export function SelectMenu({
               menuClassName,
             )}
           >
-            <div className="max-h-60 overflow-y-auto">
+            <div className="max-h-60 overflow-y-auto overscroll-contain">
               {options.map((opt) => {
                 const isActive = opt.value === value;
                 return (
