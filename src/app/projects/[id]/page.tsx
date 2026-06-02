@@ -502,76 +502,74 @@ export default function ProjectDetailPage() {
               </ul>
             </div>
 
-            {!isSuperAdmin ? (
-              <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      Project tickets
-                    </h2>
-                    <p className="text-sm text-gray-500">
-                      {tickets.length} ticket{tickets.length === 1 ? "" : "s"}{" "}
-                      linked to this project.
-                    </p>
-                  </div>
-                  <Link
-                    href="/tickets"
-                    className="text-sm font-medium text-brand-600 hover:text-brand-700"
-                  >
-                    View all tickets
-                  </Link>
+            <div className="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm dark:border-gray-800 dark:bg-[#111217]/80">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Project tickets
+                  </h2>
+                  <p className="text-sm text-gray-500">
+                    {tickets.length} ticket{tickets.length === 1 ? "" : "s"}{" "}
+                    linked to this project.
+                  </p>
                 </div>
-
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-800">
-                        <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
-                          Ticket
-                        </th>
-                        <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
-                          Status
-                        </th>
-                        <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
-                          Assignee
-                        </th>
-                        <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
-                          Created
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tickets.map((ticket) => (
-                        <tr
-                          key={ticket.id}
-                          className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5 transition-colors"
-                        >
-                          <td className="py-4 pr-6 text-sm text-gray-900 dark:text-white">
-                            <Link
-                              href={`/tickets/${ticket.id}`}
-                              className="font-medium hover:text-brand-600"
-                            >
-                              {ticket.title}
-                            </Link>
-                          </td>
-                          <td className="py-4 pr-6 text-sm text-gray-700 dark:text-gray-300">
-                            {ticket.status
-                              .replace(/_/g, " ")
-                              .replace(/\b\w/g, (c) => c.toUpperCase())}
-                          </td>
-                          <td className="py-4 pr-6 text-sm text-gray-700 dark:text-gray-300">
-                            {ticket.assignee?.name || "Unassigned"}
-                          </td>
-                          <td className="py-4 text-sm text-gray-700 dark:text-gray-300">
-                            {new Date(ticket.createdAt).toLocaleDateString()}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Link
+                  href="/tickets"
+                  className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                >
+                  View all tickets
+                </Link>
               </div>
-            ) : null}
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-800">
+                      <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        Ticket
+                      </th>
+                      <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        Status
+                      </th>
+                      <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        Assignee
+                      </th>
+                      <th className="py-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        Created
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tickets.map((ticket) => (
+                      <tr
+                        key={ticket.id}
+                        className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <td className="py-4 pr-6 text-sm text-gray-900 dark:text-white">
+                          <Link
+                            href={`/tickets/${ticket.id}`}
+                            className="font-medium hover:text-brand-600"
+                          >
+                            {ticket.title}
+                          </Link>
+                        </td>
+                        <td className="py-4 pr-6 text-sm text-gray-700 dark:text-gray-300">
+                          {ticket.status
+                            .replace(/_/g, " ")
+                            .replace(/\b\w/g, (c) => c.toUpperCase())}
+                        </td>
+                        <td className="py-4 pr-6 text-sm text-gray-700 dark:text-gray-300">
+                          {ticket.assignee?.name || "Unassigned"}
+                        </td>
+                        <td className="py-4 text-sm text-gray-700 dark:text-gray-300">
+                          {new Date(ticket.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-6 mt-8">
