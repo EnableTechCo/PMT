@@ -1184,7 +1184,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                         {a.summary}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {a.actor.name} ·{" "}
+                        {a.actor?.name ?? "System"} ·{" "}
                         {new Date(a.createdAt).toLocaleString()}
                       </p>
                     </div>
