@@ -37,6 +37,7 @@ interface Ticket {
   id: string;
   title: string;
   status: string;
+  priority?: string | null;
   createdAt: string;
   updatedAt: string;
   creator: {
@@ -125,6 +126,39 @@ const statusConfig = {
   },
 };
 
+const priorityConfig: Record<string, { label: string; className: string }> = {
+  LOW: {
+    label: "Low",
+    className:
+      "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20",
+  },
+  MEDIUM: {
+    label: "Medium",
+    className:
+      "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20",
+  },
+  HIGH: {
+    label: "High",
+    className:
+      "bg-orange-500/10 text-orange-700 dark:text-orange-300 border border-orange-500/20",
+  },
+  URGENT: {
+    label: "Urgent",
+    className:
+      "bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/20",
+  },
+  NONE: {
+    label: "None",
+    className:
+      "bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/20",
+  },
+};
+
+function getPriorityDisplay(priority?: string | null) {
+  const normalized = (priority ?? "NONE").toUpperCase();
+  return priorityConfig[normalized] ?? priorityConfig.NONE;
+}
+
 function SortableTicket({
   ticket,
   onClick,
@@ -132,6 +166,8 @@ function SortableTicket({
   ticket: Ticket;
   onClick: () => void;
 }) {
+  const priority = getPriorityDisplay(ticket.priority);
+
   const {
     attributes,
     listeners,
@@ -190,8 +226,18 @@ function SortableTicket({
         </div>
 
         <div className="space-y-2">
-          <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
-            {ticket.project?.name || "No project"}
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-medium text-gray-600 dark:text-gray-300 truncate">
+              {ticket.project?.name || "No project"}
+            </div>
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                priority.className,
+              )}
+            >
+              {priority.label}
+            </span>
           </div>
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs text-gray-500">
@@ -208,6 +254,8 @@ function SortableTicket({
 }
 
 function DraggedTicket({ ticket }: { ticket: Ticket }) {
+  const priority = getPriorityDisplay(ticket.priority);
+
   return (
     <div className="w-full max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
       <div className="flex items-start justify-between mb-3">
@@ -217,8 +265,18 @@ function DraggedTicket({ ticket }: { ticket: Ticket }) {
       </div>
 
       <div className="space-y-2">
-        <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
-          {ticket.project?.name || "No project"}
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs font-medium text-gray-600 dark:text-gray-300 truncate">
+            {ticket.project?.name || "No project"}
+          </div>
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+              priority.className,
+            )}
+          >
+            {priority.label}
+          </span>
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="text-gray-500 text-xs">
