@@ -33,6 +33,7 @@ interface Ticket {
   title: string;
   description?: string | null;
   status: string;
+  priority?: string | null;
   createdAt: string;
   updatedAt: string;
   creator: {
@@ -137,6 +138,14 @@ const priorityFilterOptions = [
   { value: "HIGH", label: "High" },
   { value: "URGENT", label: "Urgent" },
 ];
+
+const priorityConfig = {
+  NONE: { label: "None" },
+  LOW: { label: "Low" },
+  MEDIUM: { label: "Medium" },
+  HIGH: { label: "High" },
+  URGENT: { label: "Urgent" },
+} as const;
 
 const SAMPLE_IMPORT_JSON = `[
   {
@@ -412,6 +421,44 @@ export default function TicketsPage() {
       setTickets(previousTickets);
       setError(
         err instanceof Error ? err.message : "Failed to update assignee",
+      );
+    }
+  };
+
+  const handlePriorityChange = async (ticketId: string, nextPriority: string) => {
+    const previousTickets = tickets;
+    try {
+      setError("");
+      setTickets((prev) =>
+        prev.map((ticket) =>
+          ticket.id === ticketId
+            ? { ...ticket, priority: nextPriority }
+            : ticket,
+        ),
+      );
+
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ priority: nextPriority }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to update priority",
+        );
+      }
+
+      await fetchTickets();
+    } catch (err) {
+      setTickets(previousTickets);
+      setError(
+        err instanceof Error ? err.message : "Failed to update priority",
       );
     }
   };
@@ -768,29 +815,6 @@ export default function TicketsPage() {
                             <span>{status.label}</span>
                           </span>
                         </div>
-                        {(user.role === "USER" ||
-                          user.role === "SUPER_ADMIN") && (
-                          <div className="mt-3 max-w-full">
-                            <SelectMenu
-                              value={ticket.assignee?.id ?? "__unassigned__"}
-                              onChange={(value) =>
-                                handleAssigneeChange(ticket.id, value)
-                              }
-                              options={[
-                                {
-                                  value: "__unassigned__",
-                                  label: "Assignee: Unassigned",
-                                },
-                                ...assignableUsers.map((member) => ({
-                                  value: member.id,
-                                  label: `${member.name}`,
-                                })),
-                              ]}
-                              className="w-full"
-                              triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
-                            />
-                          </div>
-                        )}
                       </div>
 
                       {(user.role === "USER" ||
@@ -824,11 +848,6 @@ export default function TicketsPage() {
 
                     {/* Details */}
                     <div className="space-y-3">
-                      <div className="flex items-center space-x-2 text-sm text-gray-400">
-                        <Building className="w-4 h-4" />
-                        <span>{ticket.client?.name || "No client"}</span>
-                      </div>
-
                       {/* Project */}
 
                       <div className="flex items-center space-x-2 text-sm text-gray-400">
@@ -851,7 +870,39 @@ export default function TicketsPage() {
 
                     {/* Actions */}
                     {user.role === "USER" || user.role === "SUPER_ADMIN" ? (
-                      <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-800/50">
+                      <div className="mt-4 space-y-2 border-t border-gray-200 pt-4 dark:border-gray-800/50">
+                        <SelectMenu
+                          value={ticket.assignee?.id ?? "__unassigned__"}
+                          onChange={(value) =>
+                            handleAssigneeChange(ticket.id, value)
+                          }
+                          options={[
+                            {
+                              value: "__unassigned__",
+                              label: "Assignee: Unassigned",
+                            },
+                            ...assignableUsers.map((member) => ({
+                              value: member.id,
+                              label: `${member.name}`,
+                            })),
+                          ]}
+                          className="w-full"
+                          triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                        />
+                        <SelectMenu
+                          value={ticket.priority ?? "NONE"}
+                          onChange={(value) =>
+                            handlePriorityChange(ticket.id, value)
+                          }
+                          options={Object.entries(priorityConfig).map(
+                            ([key, config]) => ({
+                              value: key,
+                              label: config.label,
+                            }),
+                          )}
+                          className="w-full"
+                          triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                        />
                         <SelectMenu
                           value={ticket.status}
                           onChange={(value) =>
