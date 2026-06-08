@@ -177,7 +177,7 @@ function SortableTicket({
         }}
       >
         <div className="mb-2 flex items-start justify-between gap-2">
-          <h4 className="line-clamp-2 flex-1 text-sm font-medium normal-case text-slate-900 dark:text-white">
+          <h4 className="line-clamp-2 min-h-10 flex-1 text-sm font-medium normal-case leading-5 text-slate-900 dark:text-white">
             {ticket.title}
           </h4>
           <button
@@ -195,9 +195,7 @@ function SortableTicket({
           </div>
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs text-gray-500">
-              {ticket.client?.name ||
-                ticket.project?.client?.name ||
-                "No assigned client"}
+              {ticket.assignee?.name || "No assignee"}
             </div>
             <div className="text-xs text-gray-500">
               {new Date(ticket.createdAt).toLocaleDateString()}
@@ -213,7 +211,7 @@ function DraggedTicket({ ticket }: { ticket: Ticket }) {
   return (
     <div className="w-full max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
       <div className="flex items-start justify-between mb-3">
-        <h4 className="text-slate-900 dark:text-white font-medium text-sm line-clamp-2 flex-1">
+        <h4 className="line-clamp-2 min-h-10 flex-1 text-sm font-medium leading-5 text-slate-900 dark:text-white">
           {ticket.title}
         </h4>
       </div>

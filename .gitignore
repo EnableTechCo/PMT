@@ -116,3 +116,7 @@ redis_data/
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+/sql
+
+/scripts

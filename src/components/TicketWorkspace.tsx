@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -77,13 +77,17 @@ interface AssignableUser {
   email: string;
 }
 
+type EditableField = "status" | "priority" | "assignee" | "startDate";
+
 export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [ticket, setTicket] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [savingCount, setSavingCount] = useState(0);
+  const [savingField, setSavingField] = useState<EditableField | null>(null);
+  const [savedField, setSavedField] = useState<EditableField | null>(null);
   const [commentText, setCommentText] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
   const [obligations, setObligations] = useState<ClientObligation[]>([]);
@@ -129,6 +133,11 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
     owner: string;
     name: string;
   } | null>(null);
+  const patchTimersRef = useRef<
+    Partial<Record<EditableField, ReturnType<typeof setTimeout>>>
+  >({});
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saving = savingCount > 0;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -396,9 +405,40 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
     }
   };
 
-  const patchTicket = async (updates: Record<string, unknown>) => {
-    setSaving(true);
+  const patchTicket = async (
+    updates: Record<string, unknown>,
+    field?: EditableField,
+  ) => {
+    setSavingCount((current) => current + 1);
+    if (field) setSavingField(field);
     setError("");
+
+    const previousTicket = ticket;
+    setTicket((current) => {
+      if (!current) return current;
+
+      const next: Record<string, unknown> = {
+        ...current,
+        ...updates,
+      };
+
+      if ("assigneeId" in updates) {
+        const assigneeId = updates.assigneeId;
+        if (assigneeId === null || assigneeId === "") {
+          next.assignee = null;
+        } else if (typeof assigneeId === "string") {
+          const selected = assignableUsers.find(
+            (member) => member.id === assigneeId,
+          );
+          next.assignee = selected
+            ? { id: selected.id, name: selected.name, email: selected.email }
+            : current.assignee;
+        }
+      }
+
+      return next;
+    });
+
     try {
       const res = await fetch(`/api/tickets/${ticketId}`, {
         method: "PATCH",
@@ -411,14 +451,55 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
           typeof body.error === "string" ? body.error : "Save failed",
         );
       }
-      const data = await res.json();
-      setTicket(data);
+      const updatedTicket = await res.json().catch(() => null);
+      if (updatedTicket && typeof updatedTicket === "object") {
+        setTicket(updatedTicket as Record<string, unknown>);
+      }
+      if (field) {
+        if (savedTimerRef.current) {
+          clearTimeout(savedTimerRef.current);
+        }
+        setSavedField(field);
+        savedTimerRef.current = setTimeout(() => {
+          setSavedField((current) => (current === field ? null : current));
+        }, 1000);
+      }
     } catch (err) {
+      setTicket(previousTicket);
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
-      setSaving(false);
+      setSavingCount((current) => Math.max(0, current - 1));
+      if (field) {
+        setSavingField((current) => (current === field ? null : current));
+      }
     }
   };
+
+  const queuePatchTicket = (
+    field: EditableField,
+    updates: Record<string, unknown>,
+  ) => {
+    const timer = patchTimersRef.current[field];
+    if (timer) {
+      clearTimeout(timer);
+    }
+
+    patchTimersRef.current[field] = setTimeout(() => {
+      delete patchTimersRef.current[field];
+      void patchTicket(updates, field);
+    }, 250);
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.values(patchTimersRef.current).forEach((timer) => {
+        if (timer) clearTimeout(timer);
+      });
+      if (savedTimerRef.current) {
+        clearTimeout(savedTimerRef.current);
+      }
+    };
+  }, []);
 
   const createObligation = async () => {
     const title = obligationTitle.trim();
@@ -461,12 +542,13 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   };
 
   const postComment = async () => {
-    const body = commentText.trim();
+    const rawBody = commentText.trim();
+    const body = rawBody.replace(/<[^>]*>/g, "").trim();
     if (!body) return;
     const res = await fetch(`/api/tickets/${ticketId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body: rawBody }),
     });
     if (res.ok) {
       setCommentText("");
@@ -645,10 +727,13 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
     }>;
   };
 
+  const normalizedStatus =
+    typeof t.status === "string" && t.status.length > 0 ? t.status : "BACKLOG";
+
   const canEdit =
     user.role === "SUPER_ADMIN" ||
     user.role === "USER" ||
-    (user.role === "CLIENT" && t.status === "CLIENT_REVIEW");
+    (user.role === "CLIENT" && normalizedStatus === "CLIENT_REVIEW");
 
   const priorityValue = t.priority ?? "MEDIUM";
 
@@ -661,9 +746,29 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
     }
   };
 
-  const statusLabel = (s: string) => {
+  const statusLabel = (s?: string | null) => {
+    if (!s) return "Backlog";
     if (s === "REVISIONS") return "REVIEW";
     return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const renderCommentHtml = (html: string) => {
+    if (!html) return "";
+    if (typeof window === "undefined") return html;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    doc.querySelectorAll("script, style").forEach((node) => node.remove());
+    doc.querySelectorAll("*").forEach((node) => {
+      [...node.attributes].forEach((attribute) => {
+        const name = attribute.name.toLowerCase();
+        const value = attribute.value.toLowerCase();
+        if (name.startsWith("on") || value.startsWith("javascript:")) {
+          node.removeAttribute(attribute.name);
+        }
+      });
+    });
+    return doc.body.innerHTML;
   };
 
   const primaryProjectRepo = t.project?.githubRepos?.[0] ?? null;
@@ -685,7 +790,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
             </h1>
             <div className="mt-3 flex flex-wrap gap-2 text-xs sm:text-sm">
               <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-800 dark:border-gray-700 dark:bg-white/10 dark:text-gray-200">
-                {statusLabel(t.status)}
+                {statusLabel(normalizedStatus)}
               </span>
               <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-800 dark:border-gray-700 dark:bg-white/10 dark:text-gray-200">
                 Priority:{" "}
@@ -1213,9 +1318,12 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                       <p className="text-sm font-semibold text-gray-900 dark:text-white">
                         {c.author.name}
                       </p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-                        {c.body}
-                      </p>
+                      <div
+                        className="prose prose-sm mt-1 max-w-none text-sm text-gray-700 dark:prose-invert dark:text-gray-300"
+                        dangerouslySetInnerHTML={{
+                          __html: renderCommentHtml(c.body),
+                        }}
+                      />
                       <p className="mt-2 text-xs text-gray-500">
                         {new Date(c.createdAt).toLocaleString()}
                       </p>
@@ -1252,11 +1360,19 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
               </h3>
               <div className="space-y-4 text-sm">
                 <div>
-                  <label className="mb-1 block text-gray-500">Status</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-gray-500">Status</label>
+                    {savingField === "status" && (
+                      <span className="text-xs text-gray-500">Saving...</span>
+                    )}
+                    {savingField !== "status" && savedField === "status" && (
+                      <span className="text-xs text-emerald-600">Saved</span>
+                    )}
+                  </div>
                   <SelectMenu
-                    value={t.status}
+                    value={normalizedStatus}
                     onChange={(value) => {
-                      void patchTicket({ status: value });
+                      queuePatchTicket("status", { status: value });
                     }}
                     disabled={!canEdit}
                     options={STATUSES.map((s) => ({
@@ -1268,11 +1384,20 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-gray-500">Priority</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-gray-500">Priority</label>
+                    {savingField === "priority" && (
+                      <span className="text-xs text-gray-500">Saving...</span>
+                    )}
+                    {savingField !== "priority" &&
+                      savedField === "priority" && (
+                        <span className="text-xs text-emerald-600">Saved</span>
+                      )}
+                  </div>
                   <SelectMenu
                     value={priorityValue}
                     onChange={(value) => {
-                      void patchTicket({ priority: value });
+                      queuePatchTicket("priority", { priority: value });
                     }}
                     disabled={!canEdit || user.role === "CLIENT"}
                     options={PRIORITIES.map((p) => ({
@@ -1284,11 +1409,20 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-gray-500">Assignee</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-gray-500">Assignee</label>
+                    {savingField === "assignee" && (
+                      <span className="text-xs text-gray-500">Saving...</span>
+                    )}
+                    {savingField !== "assignee" &&
+                      savedField === "assignee" && (
+                        <span className="text-xs text-emerald-600">Saved</span>
+                      )}
+                  </div>
                   <SelectMenu
                     value={t.assignee?.id ?? "__unassigned__"}
                     onChange={(value) => {
-                      void patchTicket({
+                      queuePatchTicket("assignee", {
                         assigneeId: value === "__unassigned__" ? null : value,
                       });
                     }}
@@ -1313,7 +1447,16 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-gray-500">Start date</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-gray-500">Start date</label>
+                    {savingField === "startDate" && (
+                      <span className="text-xs text-gray-500">Saving...</span>
+                    )}
+                    {savingField !== "startDate" &&
+                      savedField === "startDate" && (
+                        <span className="text-xs text-emerald-600">Saved</span>
+                      )}
+                  </div>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -1339,7 +1482,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                           t.startDate ? new Date(t.startDate) : undefined
                         }
                         onSelect={(date) => {
-                          void patchTicket({
+                          queuePatchTicket("startDate", {
                             startDate: date ? date.toISOString() : null,
                           });
                         }}
