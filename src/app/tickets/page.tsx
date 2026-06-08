@@ -425,7 +425,10 @@ export default function TicketsPage() {
     }
   };
 
-  const handlePriorityChange = async (ticketId: string, nextPriority: string) => {
+  const handlePriorityChange = async (
+    ticketId: string,
+    nextPriority: string,
+  ) => {
     const previousTickets = tickets;
     try {
       setError("");
@@ -798,7 +801,7 @@ export default function TicketsPage() {
                     {/* Header */}
                     <div className="mb-4 flex items-start justify-between">
                       <div className="min-w-0 flex-1">
-                        <h3 className="mb-1 font-semibold text-gray-900 transition-colors group-hover:text-brand-600 dark:text-white dark:group-hover:text-brand-400">
+                        <h3 className="line-clamp-2 min-h-10 flex-1 text-sm font-medium normal-case leading-5 text-slate-900 dark:text-white mb-2">
                           {ticket.title}
                         </h3>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -850,27 +853,7 @@ export default function TicketsPage() {
                     <div className="space-y-3">
                       {/* Project */}
 
-                      <div className="flex items-center space-x-2 text-sm text-gray-400">
-                        <ListTodo className="w-4 h-4" />
-                        <span>{ticket.project?.name || "No project"}</span>
-                      </div>
-
-                      <div className="flex items-center space-x-2 text-sm text-gray-400">
-                        <User className="w-4 h-4" />
-                        <span>{ticket.assignee?.name || "Unassigned"}</span>
-                      </div>
-
-                      <div className="flex items-center space-x-2 text-sm text-gray-400">
-                        <Calendar className="w-4 h-4" />
-                        <span>
-                          {new Date(ticket.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    {user.role === "USER" || user.role === "SUPER_ADMIN" ? (
-                      <div className="mt-4 space-y-2 border-t border-gray-200 pt-4 dark:border-gray-800/50">
+                      <div className="w-full">
                         <SelectMenu
                           value={ticket.assignee?.id ?? "__unassigned__"}
                           onChange={(value) =>
@@ -889,6 +872,19 @@ export default function TicketsPage() {
                           className="w-full"
                           triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
                         />
+                      </div>
+
+                      <div className="flex items-center space-x-2 text-sm text-gray-400">
+                        <ListTodo className="w-4 h-4" />
+                        <span>{ticket.project?.name || "No project"}</span>
+                      </div>
+
+                      <div className="flex items-center space-x-2 text-sm text-gray-400">
+                        <User className="w-4 h-4" />
+                        <span>{ticket.assignee?.name || "Unassigned"}</span>
+                      </div>
+
+                      <div className="w-full">
                         <SelectMenu
                           value={ticket.priority ?? "NONE"}
                           onChange={(value) =>
@@ -903,22 +899,33 @@ export default function TicketsPage() {
                           className="w-full"
                           triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
                         />
-                        <SelectMenu
-                          value={ticket.status}
-                          onChange={(value) =>
-                            handleStatusChange(ticket.id, value)
-                          }
-                          options={Object.entries(statusConfig).map(
-                            ([key, config]) => ({
-                              value: key,
-                              label: config.label,
-                            }),
-                          )}
-                          className="w-full"
-                          triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
-                        />
                       </div>
-                    ) : null}
+
+                      <div className="flex items-center space-x-2 text-sm text-gray-400">
+                        <Calendar className="w-4 h-4" />
+                        <span>
+                          {new Date(ticket.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="mt-2 space-y-2 dark:border-gray-800/50">
+                      <SelectMenu
+                        value={ticket.status}
+                        onChange={(value) =>
+                          handleStatusChange(ticket.id, value)
+                        }
+                        options={Object.entries(statusConfig).map(
+                          ([key, config]) => ({
+                            value: key,
+                            label: config.label,
+                          }),
+                        )}
+                        className="w-full"
+                        triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                      />
+                    </div>
                   </div>
                 );
               })}
