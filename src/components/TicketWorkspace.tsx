@@ -792,11 +792,6 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
               <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-800 dark:border-gray-700 dark:bg-white/10 dark:text-gray-200">
                 {statusLabel(normalizedStatus)}
               </span>
-              <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-800 dark:border-gray-700 dark:bg-white/10 dark:text-gray-200">
-                Priority:{" "}
-                {PRIORITIES.find((p) => p.value === priorityValue)?.label ??
-                  priorityValue}
-              </span>
               {t.project ? (
                 <span className="rounded-full border border-gray-200 px-2.5 py-1 text-gray-600 dark:border-gray-700 dark:text-gray-400">
                   Project: {t.project.name}
@@ -816,6 +811,33 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                   Unassigned
                 </span>
               )}
+            </div>
+            <div className="mt-4 max-w-xs">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="block text-xs font-medium text-gray-500">
+                  Priority
+                </label>
+                {savingField === "priority" && (
+                  <span className="text-xs text-gray-500">Saving...</span>
+                )}
+                {savingField !== "priority" && savedField === "priority" && (
+                  <span className="text-xs text-emerald-600">Saved</span>
+                )}
+              </div>
+              <SelectMenu
+                size="sm"
+                value={priorityValue}
+                onChange={(value) => {
+                  queuePatchTicket("priority", { priority: value });
+                }}
+                disabled={!canEdit || user.role === "CLIENT"}
+                options={PRIORITIES.map((p) => ({
+                  value: p.value,
+                  label: p.label,
+                }))}
+                className="w-full"
+                triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+              />
             </div>
             <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
               Created {formatWhen(t.createdAt)}
