@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { getGithubClient } from "@/lib/github";
 import { createNotification } from "@/lib/ticketActivity";
+import { TicketStatus } from "@/lib/db-types";
 
 // GET /api/github/pull-requests?owner=foo&repo=bar
 // Fetches pull requests from GitHub for the specified repo
@@ -32,14 +33,68 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data } = await github.octokit.rest.pulls.list({
-      owner,
-      repo,
-      state: "all",
-      per_page: 50,
-    });
+    const pullRequests: any[] = [];
+    let page = 1;
 
-    return NextResponse.json(data);
+    try {
+      while (page <= 5) {
+        const { data } = await github.octokit.rest.pulls.list({
+          owner,
+          repo,
+          state: "all",
+          per_page: 100,
+          page,
+        });
+
+        pullRequests.push(...data);
+
+        if (data.length < 100) {
+          break;
+        }
+
+        page += 1;
+      }
+
+      return NextResponse.json(pullRequests);
+    } catch (primaryError: any) {
+      // Fallback for token/repo combinations where pulls.list may be restricted.
+      const query = `repo:${owner}/${repo} is:pr`;
+      const searchItems: any[] = [];
+      let searchPage = 1;
+
+      while (searchPage <= 5) {
+        const { data } = await github.octokit.rest.search.issuesAndPullRequests(
+          {
+            q: query,
+            per_page: 100,
+            page: searchPage,
+          },
+        );
+
+        searchItems.push(...data.items);
+
+        if (data.items.length < 100) {
+          break;
+        }
+
+        searchPage += 1;
+      }
+
+      if (!searchItems.length && primaryError?.message) {
+        throw primaryError;
+      }
+
+      const mapped = searchItems.map((item) => ({
+        id: item.id,
+        number: item.number,
+        title: item.title,
+        state: item.state,
+        html_url: item.html_url,
+        user: item.user ? { login: item.user.login } : undefined,
+      }));
+
+      return NextResponse.json(mapped);
+    }
   } catch (error: any) {
     console.error("Fetch PRs error:", error);
     return NextResponse.json(
@@ -58,14 +113,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { ticketId, title, number, url, state } = await request.json();
-    if (!ticketId || !title || number === undefined || !url || !state) {
+    const { ticketId, selectorId, title, number, url, state, branchRef } =
+      await request.json();
+
+    let resolvedTicketId =
+      typeof ticketId === "string" && ticketId ? ticketId : null;
+
+    if (!resolvedTicketId && typeof selectorId === "number") {
+      const matchedTicket = await db.ticket.findFirst({
+        where: { selectorId },
+        select: { id: true },
+      });
+      resolvedTicketId = matchedTicket?.id ?? null;
+    }
+
+    if (!resolvedTicketId || !title || number === undefined || !url || !state) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
     // Verify user can access ticket
     const ticket = await db.ticket.findUnique({
-      where: { id: ticketId },
+      where: { id: resolvedTicketId },
       select: {
         id: true,
         title: true,
@@ -80,7 +148,7 @@ export async function POST(request: NextRequest) {
     const pr = await db.githubPullRequest.upsert({
       where: {
         ticketId_number: {
-          ticketId,
+          ticketId: resolvedTicketId,
           number: parseInt(number, 10),
         },
       },
@@ -90,13 +158,36 @@ export async function POST(request: NextRequest) {
         state,
       },
       create: {
-        ticketId,
+        ticketId: resolvedTicketId,
         title,
         number: parseInt(number, 10),
         url,
         state,
       },
     });
+
+    if (state === "open") {
+      await db.ticket.update({
+        where: { id: resolvedTicketId },
+        data: { status: TicketStatus.IN_REVIEW },
+      });
+
+      await db.ticketActivity.create({
+        data: {
+          ticketId: resolvedTicketId,
+          actorId: sessionUser.id,
+          type: "PR_OPENED",
+          summary: `PR opened${branchRef ? ` (${branchRef})` : ""}: ${title}`,
+          metadata: JSON.stringify({
+            source: "manual_link",
+            prNumber: parseInt(number, 10),
+            prUrl: url,
+            branchRef: typeof branchRef === "string" ? branchRef : null,
+            autoStatus: TicketStatus.IN_REVIEW,
+          }),
+        },
+      });
+    }
 
     if (state === "open") {
       const targets = new Set<string>();
@@ -110,7 +201,7 @@ export async function POST(request: NextRequest) {
           type: "PR_READY_FOR_REVIEW",
           title: `PR ready for review: ${title}`,
           body: url,
-          ticketId,
+          ticketId: resolvedTicketId,
         });
       }
     }

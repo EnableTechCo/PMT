@@ -16,11 +16,18 @@ DO $$ BEGIN
       'TODO',
       'REFINE',
       'IN_PROGRESS',
+      'IN_REVIEW',
+      'QA',
       'REVISIONS',
       'CLIENT_REVIEW',
       'COMPLETE'
     );
   END IF;
+END $$;
+
+DO $$ BEGIN
+  ALTER TYPE ticket_status ADD VALUE IF NOT EXISTS 'IN_REVIEW';
+  ALTER TYPE ticket_status ADD VALUE IF NOT EXISTS 'QA';
 END $$;
 
 DO $$ BEGIN
@@ -50,6 +57,17 @@ END $$;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'project_health') THEN
     CREATE TYPE project_health AS ENUM ('GREEN', 'AMBER', 'RED');
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'sprint_status') THEN
+    CREATE TYPE sprint_status AS ENUM (
+      'PLANNED',
+      'ACTIVE',
+      'COMPLETED',
+      'CLOSED'
+    );
   END IF;
 END $$;
 
@@ -124,11 +142,40 @@ CREATE TABLE IF NOT EXISTS "Milestone" (
   "updatedAt" timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS "Sprint" (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "teamId" uuid NOT NULL REFERENCES "Team"(id) ON DELETE CASCADE,
+  "projectId" uuid REFERENCES "Project"(id) ON DELETE SET NULL,
+  "createdById" uuid NOT NULL REFERENCES "User"(id) ON DELETE RESTRICT,
+  name text NOT NULL,
+  goal text,
+  status sprint_status NOT NULL DEFAULT 'PLANNED',
+  "startsAt" timestamptz NOT NULL,
+  "endsAt" timestamptz NOT NULL,
+  "completedAt" timestamptz,
+  "createdAt" timestamptz NOT NULL DEFAULT now(),
+  "updatedAt" timestamptz NOT NULL DEFAULT now(),
+  CHECK ("startsAt" < "endsAt")
+);
+
 CREATE TABLE IF NOT EXISTS "Ticket" (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
   description text,
   "acceptanceCriteria" text,
+  "workType" text NOT NULL DEFAULT 'chore' CHECK (
+    "workType" IN (
+      'feat',
+      'fix',
+      'bugfix',
+      'chore',
+      'docs',
+      'refactor',
+      'test',
+      'perf',
+      'hotfix'
+    )
+  ),
   status ticket_status NOT NULL DEFAULT 'BACKLOG',
   priority ticket_priority NOT NULL DEFAULT 'MEDIUM',
   "creatorId" uuid NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
@@ -196,6 +243,9 @@ CREATE TABLE IF NOT EXISTS "Document" (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
   content text,
+  "authorId" uuid REFERENCES "User"(id) ON DELETE SET NULL,
+  "teamId" uuid REFERENCES "Team"(id) ON DELETE SET NULL,
+  "projectId" uuid REFERENCES "Project"(id) ON DELETE SET NULL,
   "createdAt" timestamptz NOT NULL DEFAULT now(),
   "updatedAt" timestamptz NOT NULL DEFAULT now()
 );
@@ -319,6 +369,110 @@ CREATE TABLE IF NOT EXISTS "PasswordReset" (
   "createdAt" timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE "Ticket"
+  ADD COLUMN IF NOT EXISTS "selectorId" integer;
+
+ALTER TABLE "Ticket"
+  ADD COLUMN IF NOT EXISTS "sprintId" uuid;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'Ticket_sprintId_fkey'
+  ) THEN
+    ALTER TABLE "Ticket"
+      ADD CONSTRAINT "Ticket_sprintId_fkey"
+      FOREIGN KEY ("sprintId") REFERENCES "Sprint"(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+ALTER TABLE "Ticket"
+  ADD COLUMN IF NOT EXISTS "workType" text;
+
+UPDATE "Ticket"
+SET "workType" = 'chore'
+WHERE "workType" IS NULL OR btrim("workType") = '';
+
+ALTER TABLE "Ticket"
+  ALTER COLUMN "workType" SET DEFAULT 'chore';
+
+ALTER TABLE "Ticket"
+  ALTER COLUMN "workType" SET NOT NULL;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'Ticket_workType_check'
+  ) THEN
+    ALTER TABLE "Ticket"
+      ADD CONSTRAINT "Ticket_workType_check"
+      CHECK (
+        "workType" IN (
+          'feat',
+          'fix',
+          'bugfix',
+          'chore',
+          'docs',
+          'refactor',
+          'test',
+          'perf',
+          'hotfix'
+        )
+      );
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "Ticket_selectorId_key"
+  ON "Ticket"("selectorId")
+  WHERE "selectorId" IS NOT NULL;
+
+ALTER TABLE "Document"
+  ADD COLUMN IF NOT EXISTS "authorId" uuid;
+
+ALTER TABLE "Document"
+  ADD COLUMN IF NOT EXISTS "teamId" uuid;
+
+ALTER TABLE "Document"
+  ADD COLUMN IF NOT EXISTS "projectId" uuid;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'Document_authorId_fkey'
+  ) THEN
+    ALTER TABLE "Document"
+      ADD CONSTRAINT "Document_authorId_fkey"
+      FOREIGN KEY ("authorId") REFERENCES "User"(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'Document_teamId_fkey'
+  ) THEN
+    ALTER TABLE "Document"
+      ADD CONSTRAINT "Document_teamId_fkey"
+      FOREIGN KEY ("teamId") REFERENCES "Team"(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'Document_projectId_fkey'
+  ) THEN
+    ALTER TABLE "Document"
+      ADD CONSTRAINT "Document_projectId_fkey"
+      FOREIGN KEY ("projectId") REFERENCES "Project"(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS "InviteToken" (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   token text NOT NULL UNIQUE,
@@ -350,18 +504,28 @@ CREATE INDEX IF NOT EXISTS idx_ticket_creator ON "Ticket"("creatorId");
 CREATE INDEX IF NOT EXISTS idx_ticket_assignee ON "Ticket"("assigneeId");
 CREATE INDEX IF NOT EXISTS idx_ticket_client ON "Ticket"("clientId");
 CREATE INDEX IF NOT EXISTS idx_ticket_project ON "Ticket"("projectId");
+CREATE INDEX IF NOT EXISTS idx_ticket_sprint ON "Ticket"("sprintId");
 CREATE INDEX IF NOT EXISTS idx_ticket_status ON "Ticket"(status);
 CREATE INDEX IF NOT EXISTS idx_ticket_priority ON "Ticket"(priority);
 CREATE INDEX IF NOT EXISTS idx_project_team ON "Project"("teamId");
 CREATE INDEX IF NOT EXISTS idx_project_client ON "Project"("clientId");
 CREATE INDEX IF NOT EXISTS idx_project_portfolio ON "Project"("portfolioId");
 CREATE INDEX IF NOT EXISTS idx_milestone_project ON "Milestone"("projectId");
+CREATE INDEX IF NOT EXISTS idx_sprint_team ON "Sprint"("teamId");
+CREATE INDEX IF NOT EXISTS idx_sprint_project ON "Sprint"("projectId");
+CREATE INDEX IF NOT EXISTS idx_sprint_team_status ON "Sprint"("teamId", status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sprint_one_active_per_team
+  ON "Sprint"("teamId")
+  WHERE status = 'ACTIVE';
 CREATE INDEX IF NOT EXISTS idx_comment_ticket ON "TicketComment"("ticketId");
 CREATE INDEX IF NOT EXISTS idx_attachment_ticket ON "TicketAttachment"("ticketId");
 CREATE INDEX IF NOT EXISTS idx_checklist_ticket ON "TicketChecklistItem"("ticketId");
 CREATE INDEX IF NOT EXISTS idx_activity_ticket ON "TicketActivity"("ticketId");
 CREATE INDEX IF NOT EXISTS idx_activity_actor ON "TicketActivity"("actorId");
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON "AuditLog"("actorId");
+CREATE INDEX IF NOT EXISTS idx_document_author ON "Document"("authorId");
+CREATE INDEX IF NOT EXISTS idx_document_team ON "Document"("teamId");
+CREATE INDEX IF NOT EXISTS idx_document_project ON "Document"("projectId");
 CREATE INDEX IF NOT EXISTS idx_notification_user ON "Notification"("userId");
 CREATE INDEX IF NOT EXISTS idx_client_obligation_ticket ON "ClientObligation"("ticketId");
 CREATE INDEX IF NOT EXISTS idx_client_obligation_status ON "ClientObligation"(status);

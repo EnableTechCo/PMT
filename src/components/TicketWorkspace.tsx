@@ -10,6 +10,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { SelectMenu } from "@/components/SelectMenu";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
+import { buildTicketBranchCommands } from "@/lib/ticket-branching";
 import {
   ArrowLeft,
   Trash2,
@@ -52,6 +53,8 @@ const STATUSES = [
   "TODO",
   "REFINE",
   "IN_PROGRESS",
+  "IN_REVIEW",
+  "QA",
   "REVISIONS",
   "COMPLETE",
   "CLIENT_REVIEW",
@@ -77,7 +80,19 @@ interface AssignableUser {
   email: string;
 }
 
-type EditableField = "status" | "priority" | "assignee" | "startDate";
+interface SprintOption {
+  id: string;
+  name: string;
+  status: "PLANNED" | "ACTIVE" | "COMPLETED" | "CLOSED";
+}
+
+type EditableField =
+  | "status"
+  | "priority"
+  | "assignee"
+  | "sprint"
+  | "startDate"
+  | "dueDate";
 
 export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const router = useRouter();
@@ -121,6 +136,15 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const [availableRepos, setAvailableRepos] = useState<any[]>([]);
   const [availableBranches, setAvailableBranches] = useState<any[]>([]);
   const [availablePRs, setAvailablePRs] = useState<any[]>([]);
+  const [liveMatchingBranches, setLiveMatchingBranches] = useState<
+    Array<{ name: string; url: string }>
+  >([]);
+  const [liveWorkflowRun, setLiveWorkflowRun] = useState<{
+    workflowName: string;
+    conclusion: string;
+    status: string;
+    url?: string;
+  } | null>(null);
 
   const [searchRepo, setSearchRepo] = useState("");
   const [loadingRepos, setLoadingRepos] = useState(false);
@@ -128,6 +152,8 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const [loadingPRs, setLoadingPRs] = useState(false);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const [loadingAssignableUsers, setLoadingAssignableUsers] = useState(false);
+  const [sprintOptions, setSprintOptions] = useState<SprintOption[]>([]);
+  const [loadingSprints, setLoadingSprints] = useState(false);
 
   const [activeRepo, setActiveRepo] = useState<{
     owner: string;
@@ -247,6 +273,177 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
         setAssignableUsers([]);
       } finally {
         setLoadingAssignableUsers(false);
+      }
+    })();
+  }, [authLoading, user, ticket]);
+
+  useEffect(() => {
+    if (authLoading || !user || !githubConnected) {
+      setLiveMatchingBranches([]);
+      setLiveWorkflowRun(null);
+      return;
+    }
+
+    const ticketValue = ticket as {
+      selectorId?: number | string | null;
+      workType?: string | null;
+      project?: {
+        githubRepos?: Array<{ owner: string; name: string }>;
+      } | null;
+    } | null;
+
+    const repo = ticketValue?.project?.githubRepos?.[0];
+    if (!repo) {
+      setLiveMatchingBranches([]);
+      setLiveWorkflowRun(null);
+      return;
+    }
+
+    const selectorIdRaw = ticketValue?.selectorId;
+    const selectorId =
+      typeof selectorIdRaw === "number"
+        ? selectorIdRaw
+        : typeof selectorIdRaw === "string"
+          ? Number.parseInt(selectorIdRaw, 10)
+          : NaN;
+
+    if (!Number.isFinite(selectorId)) {
+      setLiveMatchingBranches([]);
+      setLiveWorkflowRun(null);
+      return;
+    }
+
+    const workType =
+      typeof ticketValue?.workType === "string" && ticketValue.workType.trim()
+        ? ticketValue.workType.trim().toLowerCase()
+        : "";
+
+    let canceled = false;
+
+    const run = async () => {
+      try {
+        const [branchesRes, workflowRunsRes] = await Promise.all([
+          fetch(`/api/github/branches?owner=${repo.owner}&repo=${repo.name}`),
+          fetch(
+            `/api/github/workflows/runs?owner=${repo.owner}&repo=${repo.name}`,
+          ),
+        ]);
+
+        if (!canceled && branchesRes.ok) {
+          const branches = (await branchesRes.json()) as Array<{
+            name?: string;
+          }>;
+          const selectorToken = `${Math.trunc(selectorId)}-`;
+          const preferredPrefix = workType
+            ? `${workType}/${selectorToken}`
+            : null;
+
+          const matched = (Array.isArray(branches) ? branches : [])
+            .map((branch) => {
+              const name = typeof branch.name === "string" ? branch.name : "";
+              return {
+                name,
+                url: `https://github.com/${repo.owner}/${repo.name}/tree/${name}`,
+              };
+            })
+            .filter((branch) => {
+              if (!branch.name) return false;
+              if (preferredPrefix && branch.name.startsWith(preferredPrefix)) {
+                return true;
+              }
+              return branch.name.includes(`/${selectorToken}`);
+            });
+
+          setLiveMatchingBranches(matched);
+        }
+
+        if (!canceled && workflowRunsRes.ok) {
+          const payload = (await workflowRunsRes.json()) as {
+            runs?: Array<{
+              name?: string;
+              status?: string;
+              conclusion?: string | null;
+              html_url?: string;
+              head_branch?: string;
+            }>;
+          };
+
+          const runs = Array.isArray(payload.runs) ? payload.runs : [];
+          const selectorToken = `${Math.trunc(selectorId)}-`;
+          const matchedRun = runs.find((runItem) => {
+            const branchName =
+              typeof runItem.head_branch === "string"
+                ? runItem.head_branch
+                : "";
+            return branchName.includes(`/${selectorToken}`);
+          });
+
+          setLiveWorkflowRun(
+            matchedRun
+              ? {
+                  workflowName:
+                    typeof matchedRun.name === "string"
+                      ? matchedRun.name
+                      : "Workflow",
+                  status:
+                    typeof matchedRun.status === "string"
+                      ? matchedRun.status
+                      : "unknown",
+                  conclusion:
+                    typeof matchedRun.conclusion === "string"
+                      ? matchedRun.conclusion
+                      : "unknown",
+                  url:
+                    typeof matchedRun.html_url === "string"
+                      ? matchedRun.html_url
+                      : undefined,
+                }
+              : null,
+          );
+        }
+      } catch {
+        if (!canceled) {
+          setLiveMatchingBranches([]);
+          setLiveWorkflowRun(null);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      canceled = true;
+    };
+  }, [authLoading, githubConnected, ticket, user]);
+
+  useEffect(() => {
+    if (authLoading || !user || user.role === "CLIENT") return;
+
+    const teamId = (ticket as { team?: { id: string } | null } | null)?.team
+      ?.id;
+    if (!teamId) {
+      setSprintOptions([]);
+      return;
+    }
+
+    void (async () => {
+      setLoadingSprints(true);
+      try {
+        const res = await fetch(`/api/sprints?teamId=${teamId}`);
+        if (!res.ok) {
+          setSprintOptions([]);
+          return;
+        }
+
+        const data = (await res.json()) as SprintOption[];
+        const sprints = Array.isArray(data) ? data : [];
+        setSprintOptions(
+          sprints.filter((sprint) => sprint.status !== "CLOSED"),
+        );
+      } catch {
+        setSprintOptions([]);
+      } finally {
+        setLoadingSprints(false);
       }
     })();
   }, [authLoading, user, ticket]);
@@ -436,6 +633,20 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
         }
       }
 
+      if ("sprintId" in updates) {
+        const sprintId = updates.sprintId;
+        if (sprintId === null || sprintId === "") {
+          next.sprint = null;
+        } else if (typeof sprintId === "string") {
+          const selectedSprint = sprintOptions.find(
+            (sprint) => sprint.id === sprintId,
+          );
+          if (selectedSprint) {
+            next.sprint = selectedSprint;
+          }
+        }
+      }
+
       return next;
     });
 
@@ -491,8 +702,9 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   };
 
   useEffect(() => {
+    const patchTimers = patchTimersRef.current;
     return () => {
-      Object.values(patchTimersRef.current).forEach((timer) => {
+      Object.values(patchTimers).forEach((timer) => {
         if (timer) clearTimeout(timer);
       });
       if (savedTimerRef.current) {
@@ -661,6 +873,8 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
 
   const t = ticket as {
     id: string;
+    selectorId?: number | null;
+    workType?: string | null;
     title: string;
     description: string | null;
     acceptanceCriteria?: string | null;
@@ -668,12 +882,20 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
     priority?: string | null;
     startDate: string | null;
     dueDate: string | null;
+    sprintId?: string | null;
     createdAt?: string;
     updatedAt?: string;
     creator: { id: string; name: string; email: string };
     assignee?: { id: string; name: string; email: string } | null;
     client?: { id: string; name: string; email: string } | null;
     team?: { id: string; name: string } | null;
+    sprint?: {
+      id: string;
+      name: string;
+      status: "PLANNED" | "ACTIVE" | "COMPLETED" | "CLOSED";
+      startsAt?: string;
+      endsAt?: string;
+    } | null;
     project?: {
       id: string;
       name: string;
@@ -722,6 +944,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
       id: string;
       type: string;
       summary: string;
+      metadata?: string | null;
       createdAt: string;
       actor: { id: string; name: string };
     }>;
@@ -734,6 +957,8 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
     user.role === "SUPER_ADMIN" ||
     user.role === "USER" ||
     (user.role === "CLIENT" && normalizedStatus === "CLIENT_REVIEW");
+  const statusOptionsForUser =
+    user.role === "CLIENT" ? ["REVISIONS", "COMPLETE"] : [...STATUSES];
 
   const priorityValue = t.priority ?? "MEDIUM";
 
@@ -746,9 +971,31 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
     }
   };
 
+  const parseDateOnly = (value: string | null | undefined) => {
+    if (!value || typeof value !== "string") return undefined;
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return undefined;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (!year || !month || !day) return undefined;
+    return new Date(year, month - 1, day);
+  };
+
+  const parseActivityMetadata = (metadata: string | null | undefined) => {
+    if (!metadata || typeof metadata !== "string") return null;
+    try {
+      return JSON.parse(metadata) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+
   const statusLabel = (s?: string | null) => {
     if (!s) return "Backlog";
-    if (s === "REVISIONS") return "REVIEW";
+    if (s === "REVISIONS") return "Revisions";
+    if (s === "IN_REVIEW") return "In Review";
+    if (s === "QA") return "QA";
     return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
@@ -772,6 +1019,119 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   };
 
   const primaryProjectRepo = t.project?.githubRepos?.[0] ?? null;
+  const effectiveStartDate = t.sprint?.startsAt ?? t.startDate;
+  const effectiveDueDate = t.sprint?.endsAt ?? t.dueDate;
+  const isSprintScheduleManaged = Boolean(t.sprint?.id);
+
+  const githubCheckRunsByName = new Map<
+    string,
+    { conclusion: string; status: string; url?: string }
+  >();
+  let latestWorkflowRun:
+    | {
+        workflowName: string;
+        conclusion: string;
+        status: string;
+        url?: string;
+        environment?: string;
+      }
+    | undefined;
+  let latestDeployment:
+    | { state: string; environment?: string; url?: string }
+    | undefined;
+  let latestThreadCounts:
+    | { resolved: number; unresolved: number; total: number }
+    | undefined;
+
+  for (const activity of t.activities ?? []) {
+    const meta = parseActivityMetadata(activity.metadata);
+    if (!meta) continue;
+
+    if (activity.type === "GH_CHECK_RUN") {
+      const checkName =
+        typeof meta.checkName === "string" ? meta.checkName : "";
+      if (!checkName || githubCheckRunsByName.has(checkName)) continue;
+      githubCheckRunsByName.set(checkName, {
+        conclusion:
+          typeof meta.conclusion === "string" ? meta.conclusion : "unknown",
+        status: typeof meta.status === "string" ? meta.status : "unknown",
+        url: typeof meta.url === "string" ? meta.url : undefined,
+      });
+      continue;
+    }
+
+    if (!latestWorkflowRun && activity.type === "GH_WORKFLOW_RUN") {
+      latestWorkflowRun = {
+        workflowName:
+          typeof meta.workflowName === "string"
+            ? meta.workflowName
+            : "Workflow",
+        conclusion:
+          typeof meta.conclusion === "string" ? meta.conclusion : "unknown",
+        status: typeof meta.status === "string" ? meta.status : "unknown",
+        url: typeof meta.url === "string" ? meta.url : undefined,
+        environment:
+          typeof meta.environment === "string" ? meta.environment : undefined,
+      };
+      continue;
+    }
+
+    if (!latestDeployment && activity.type === "GH_DEPLOYMENT") {
+      latestDeployment = {
+        state: typeof meta.state === "string" ? meta.state : "unknown",
+        environment:
+          typeof meta.environment === "string" ? meta.environment : undefined,
+        url: typeof meta.url === "string" ? meta.url : undefined,
+      };
+      continue;
+    }
+
+    if (!latestThreadCounts && activity.type === "GH_REVIEW_THREAD_COUNTS") {
+      latestThreadCounts = {
+        resolved:
+          typeof meta.resolved === "number" ? Math.trunc(meta.resolved) : 0,
+        unresolved:
+          typeof meta.unresolved === "number" ? Math.trunc(meta.unresolved) : 0,
+        total: typeof meta.total === "number" ? Math.trunc(meta.total) : 0,
+      };
+    }
+  }
+
+  const failingChecks = Array.from(githubCheckRunsByName.entries())
+    .filter(([, value]) => {
+      const conclusion = value.conclusion.toLowerCase();
+      return (
+        value.status === "completed" &&
+        !["success", "neutral", "skipped"].includes(conclusion)
+      );
+    })
+    .map(([name, value]) => ({
+      name,
+      conclusion: value.conclusion,
+      url: value.url,
+    }));
+
+  const ticketBranchPlan = buildTicketBranchCommands({
+    workType: t.workType ?? "chore",
+    selectorId: t.selectorId ?? null,
+    title: typeof t.title === "string" ? t.title : "",
+  });
+  const effectiveWorkflowRun =
+    latestWorkflowRun ?? liveWorkflowRun ?? undefined;
+  const displayedBranches =
+    t.githubBranches && t.githubBranches.length > 0
+      ? t.githubBranches.map((branch) => ({
+          id: branch.id,
+          name: branch.name,
+          url: branch.url,
+          linked: true,
+        }))
+      : liveMatchingBranches.map((branch) => ({
+          id: `live:${branch.name}`,
+          name: branch.name,
+          url: branch.url,
+          linked: false,
+        }));
 
   return (
     <DashboardLayout>
@@ -789,6 +1149,11 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
               {t.title || "Untitled ticket"}
             </h1>
             <div className="mt-3 flex flex-wrap gap-2 text-xs sm:text-sm">
+              {typeof t.selectorId === "number" ? (
+                <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 font-semibold text-brand-700 dark:border-brand-900/40 dark:bg-brand-500/10 dark:text-brand-300">
+                  Ticket #{t.selectorId}
+                </span>
+              ) : null}
               <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-800 dark:border-gray-700 dark:bg-white/10 dark:text-gray-200">
                 {statusLabel(normalizedStatus)}
               </span>
@@ -797,6 +1162,15 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                   Project: {t.project.name}
                 </span>
               ) : null}
+              {t.sprint ? (
+                <span className="rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-purple-700 dark:border-purple-700/50 dark:bg-purple-500/10 dark:text-purple-300">
+                  Sprint: {t.sprint.name}
+                </span>
+              ) : (
+                <span className="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-gray-500 dark:border-gray-600">
+                  Backlog
+                </span>
+              )}
               {t.client ? (
                 <span className="rounded-full border border-gray-200 px-2.5 py-1 text-gray-600 dark:border-gray-700 dark:text-gray-400">
                   Client: {t.client.name}
@@ -812,39 +1186,23 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                 </span>
               )}
             </div>
-            <div className="mt-4 max-w-xs">
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <label className="block text-xs font-medium text-gray-500">
-                  Priority
-                </label>
-                {savingField === "priority" && (
-                  <span className="text-xs text-gray-500">Saving...</span>
-                )}
-                {savingField !== "priority" && savedField === "priority" && (
-                  <span className="text-xs text-emerald-600">Saved</span>
-                )}
-              </div>
-              <SelectMenu
-                size="sm"
-                value={priorityValue}
-                onChange={(value) => {
-                  queuePatchTicket("priority", { priority: value });
-                }}
-                disabled={!canEdit || user.role === "CLIENT"}
-                options={PRIORITIES.map((p) => ({
-                  value: p.value,
-                  label: p.label,
-                }))}
-                className="w-full"
-                triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-              />
-            </div>
             <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
               Created {formatWhen(t.createdAt)}
               {t.updatedAt && t.updatedAt !== t.createdAt
                 ? ` · Updated ${formatWhen(t.updatedAt)}`
                 : null}
             </p>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                Branch command for this ticket
+              </p>
+              <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-200">
+                {ticketBranchPlan.branchName}
+              </p>
+              <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 px-3 py-2 text-xs text-slate-100">
+                {ticketBranchPlan.commands.join("\n")}
+              </pre>
+            </div>
             {t.project ? (
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                 Project repo:{" "}
@@ -1134,39 +1492,135 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                <div className="rounded-lg border border-gray-200 bg-white/60 p-3 dark:border-gray-800 dark:bg-gray-900/40">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Failing Checks
+                  </p>
+                  {failingChecks.length === 0 ? (
+                    <p className="mt-2 text-sm text-emerald-600 dark:text-emerald-400">
+                      No failing checks
+                    </p>
+                  ) : (
+                    <ul className="mt-2 space-y-1.5">
+                      {failingChecks.slice(0, 4).map((check) => (
+                        <li
+                          key={check.name}
+                          className="flex items-center justify-between gap-2"
+                        >
+                          <span className="text-xs text-red-600 dark:text-red-400">
+                            {check.name}
+                          </span>
+                          {check.url ? (
+                            <a
+                              href={check.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-gray-400 hover:text-brand-500"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-gray-200 bg-white/60 p-3 dark:border-gray-800 dark:bg-gray-900/40">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Latest Workflow
+                  </p>
+                  {effectiveWorkflowRun ? (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-sm text-gray-800 dark:text-gray-100">
+                        {effectiveWorkflowRun.workflowName}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {effectiveWorkflowRun.conclusion ||
+                          effectiveWorkflowRun.status}
+                        {"environment" in (effectiveWorkflowRun || {}) &&
+                        (effectiveWorkflowRun as any).environment
+                          ? ` · ${(effectiveWorkflowRun as any).environment}`
+                          : ""}
+                      </p>
+                      {effectiveWorkflowRun.url ? (
+                        <a
+                          href={effectiveWorkflowRun.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                        >
+                          Open workflow <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-gray-500">
+                      No workflow run yet.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-gray-200 bg-white/60 p-3 dark:border-gray-800 dark:bg-gray-900/40">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Deploy + Review Threads
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-xs text-gray-500">
+                      Deploy: {latestDeployment?.state ?? "N/A"}
+                      {latestDeployment?.environment
+                        ? ` · ${latestDeployment.environment}`
+                        : ""}
+                    </p>
+                    {latestDeployment?.url ? (
+                      <a
+                        href={latestDeployment.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                      >
+                        Open deploy <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+                    <p className="text-xs text-gray-500">
+                      Threads: {latestThreadCounts?.unresolved ?? 0} unresolved
+                      / {latestThreadCounts?.resolved ?? 0} resolved
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Linked Items List */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Branches */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
                     <GitBranch className="w-3.5 h-3.5 text-blue-500" />
-                    Linked Branches ({(t.githubBranches ?? []).length})
+                    Linked Branches ({displayedBranches.length})
                   </h3>
-                  {!t.githubBranches || t.githubBranches.length === 0 ? (
+                  {displayedBranches.length === 0 ? (
                     <p className="text-xs text-gray-500 bg-slate-50/50 dark:bg-white/5 rounded-lg p-3 border border-dashed border-gray-200 dark:border-gray-800">
                       No branches linked yet.
                     </p>
                   ) : (
                     <ul className="space-y-2">
-                      {t.githubBranches.map((b) => (
+                      {displayedBranches.map((b) => (
                         <li
                           key={b.id}
                           className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5"
                         >
                           <div className="min-w-0 flex-1 flex items-center gap-2">
-                            <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 truncate bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                              {b.name}
-                            </span>
                             <a
                               href={b.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-gray-400 hover:text-brand-500"
+                              className="font-mono text-xs font-semibold text-brand-700 hover:underline dark:text-brand-400 truncate bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded"
                             >
-                              <ExternalLink className="w-3.5 h-3.5" />
+                              {b.name}
                             </a>
                           </div>
-                          {canEdit && (
+                          {canEdit && b.linked && (
                             <button
                               onClick={() =>
                                 setConfirmAction({
@@ -1207,9 +1661,14 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                             className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5"
                           >
                             <div className="min-w-0 flex-1 flex items-center gap-2">
-                              <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 truncate">
+                              <a
+                                href={pr.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-semibold text-xs text-brand-700 dark:text-brand-400 truncate hover:underline"
+                              >
                                 #{pr.number} {pr.title}
-                              </span>
+                              </a>
                               <span
                                 className={cn(
                                   "inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold",
@@ -1300,23 +1759,62 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                 </h2>
               </div>
               <ul className="space-y-4">
-                {(t.activities ?? []).map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex gap-4 border-b border-gray-100 pb-4 last:border-0 dark:border-gray-800"
-                  >
-                    <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-brand-600" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {a.summary}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {a.actor?.name ?? "System"} ·{" "}
-                        {new Date(a.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-                  </li>
-                ))}
+                {(t.activities ?? []).map((a) => {
+                  let githubUrl = "";
+                  let githubComment = "";
+
+                  if (typeof a.metadata === "string" && a.metadata) {
+                    try {
+                      const parsed: any = JSON.parse(a.metadata);
+                      githubUrl =
+                        typeof parsed.url === "string" ? parsed.url : "";
+                      githubComment =
+                        typeof parsed.comment === "string"
+                          ? parsed.comment
+                          : "";
+                    } catch {
+                      githubUrl = "";
+                      githubComment = "";
+                    }
+                  }
+
+                  return (
+                    <li
+                      key={a.id}
+                      className="flex gap-4 border-b border-gray-100 pb-4 last:border-0 dark:border-gray-800"
+                    >
+                      <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-brand-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {a.summary}
+                        </p>
+                        {githubComment ? (
+                          <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                            {githubComment}
+                          </p>
+                        ) : null}
+                        <p className="text-xs text-gray-500">
+                          {a.actor?.name ?? "System"} ·{" "}
+                          {new Date(a.createdAt).toLocaleString()}
+                          {githubUrl ? (
+                            <>
+                              {" "}
+                              ·{" "}
+                              <a
+                                href={githubUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-brand-600 hover:underline dark:text-brand-400"
+                              >
+                                View on GitHub
+                              </a>
+                            </>
+                          ) : null}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
               {(t.activities?.length ?? 0) === 0 && (
                 <p className="text-sm text-gray-500">No activity yet.</p>
@@ -1397,7 +1895,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                       queuePatchTicket("status", { status: value });
                     }}
                     disabled={!canEdit}
-                    options={STATUSES.map((s) => ({
+                    options={statusOptionsForUser.map((s) => ({
                       value: s,
                       label: statusLabel(s),
                     }))}
@@ -1470,6 +1968,38 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                 </div>
                 <div>
                   <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-gray-500">Sprint</label>
+                    {savingField === "sprint" && (
+                      <span className="text-xs text-gray-500">Saving...</span>
+                    )}
+                    {savingField !== "sprint" && savedField === "sprint" && (
+                      <span className="text-xs text-emerald-600">Saved</span>
+                    )}
+                  </div>
+                  <SelectMenu
+                    value={t.sprint?.id ?? "__backlog__"}
+                    onChange={(value) => {
+                      queuePatchTicket("sprint", {
+                        sprintId: value === "__backlog__" ? null : value,
+                      });
+                    }}
+                    disabled={!canEdit || user.role === "CLIENT"}
+                    options={[
+                      { value: "__backlog__", label: "Backlog" },
+                      ...sprintOptions.map((sprint) => ({
+                        value: sprint.id,
+                        label: `${sprint.name} (${sprint.status})`,
+                      })),
+                    ]}
+                    className="w-full"
+                    triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                    placeholder={
+                      loadingSprints ? "Loading sprints..." : "Select sprint"
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="mb-1 flex items-center justify-between gap-2">
                     <label className="block text-gray-500">Start date</label>
                     {savingField === "startDate" && (
                       <span className="text-xs text-gray-500">Saving...</span>
@@ -1483,16 +2013,24 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                        disabled={!canEdit || user.role === "CLIENT"}
+                        disabled={
+                          !canEdit ||
+                          user.role === "CLIENT" ||
+                          isSprintScheduleManaged
+                        }
                         className={cn(
                           "w-full justify-start text-left font-normal",
-                          !t.startDate && "text-muted-foreground",
+                          !effectiveStartDate && "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
 
-                        {t.startDate
-                          ? format(new Date(t.startDate), "PPP")
+                        {effectiveStartDate
+                          ? format(
+                              parseDateOnly(effectiveStartDate) ??
+                                new Date(effectiveStartDate),
+                              "PPP",
+                            )
                           : "Pick a date"}
                       </Button>
                     </PopoverTrigger>
@@ -1500,38 +2038,64 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
-                        selected={
-                          t.startDate ? new Date(t.startDate) : undefined
-                        }
+                        selected={parseDateOnly(effectiveStartDate)}
                         onSelect={(date) => {
                           queuePatchTicket("startDate", {
-                            startDate: date ? date.toISOString() : null,
+                            startDate: date ? format(date, "yyyy-MM-dd") : null,
                           });
                         }}
                       />
                     </PopoverContent>
                   </Popover>
                 </div>
-                <div className="border-t border-[var(--border)] pt-4 dark:border-gray-800">
-                  <p className="mb-2 text-xs font-semibold uppercase text-gray-500">
-                    Record
-                  </p>
-                  <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                    {t.assignee ? (
-                      <li>
-                        <span className="text-gray-500">Assignee email</span>
-                        <p className="break-all">{t.assignee.email}</p>
-                      </li>
-                    ) : null}
-                    <li>
-                      <span className="text-gray-500">Created</span>
-                      <p>{formatWhen(t.createdAt)}</p>
-                    </li>
-                    <li>
-                      <span className="text-gray-500">Last updated</span>
-                      <p>{formatWhen(t.updatedAt)}</p>
-                    </li>
-                  </ul>
+                <div>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-gray-500">Due date</label>
+                    {savingField === "dueDate" && (
+                      <span className="text-xs text-gray-500">Saving...</span>
+                    )}
+                    {savingField !== "dueDate" && savedField === "dueDate" && (
+                      <span className="text-xs text-emerald-600">Saved</span>
+                    )}
+                  </div>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        disabled={
+                          !canEdit ||
+                          user.role === "CLIENT" ||
+                          isSprintScheduleManaged
+                        }
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !effectiveDueDate && "text-muted-foreground",
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+
+                        {effectiveDueDate
+                          ? format(
+                              parseDateOnly(effectiveDueDate) ??
+                                new Date(effectiveDueDate),
+                              "PPP",
+                            )
+                          : "Pick a date"}
+                      </Button>
+                    </PopoverTrigger>
+
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={parseDateOnly(effectiveDueDate)}
+                        onSelect={(date) => {
+                          queuePatchTicket("dueDate", {
+                            dueDate: date ? format(date, "yyyy-MM-dd") : null,
+                          });
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
               {saving && <p className="mt-2 text-xs text-gray-500">Saving…</p>}

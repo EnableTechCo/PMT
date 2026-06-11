@@ -1,11 +1,21 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { MetricCard, type MetricCardColor } from "@/components/MetricCard";
 
 export interface OverviewMetric {
   label: string;
   value: number;
+  sublabel?: string;
 }
+
+const COLOR_CYCLE: MetricCardColor[] = [
+  "blue",
+  "orange",
+  "indigo",
+  "purple",
+  "emerald",
+  "rose",
+];
 
 export function OverviewMetricStrip({
   metrics,
@@ -14,27 +24,18 @@ export function OverviewMetricStrip({
 }) {
   return (
     <div
-      className="inline-flex w-full max-w-full flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] shadow-card sm:flex-row dark:border-gray-800 dark:bg-[#1c1c24]"
+      className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
       aria-label="Overview counts"
       role="list"
     >
       {metrics.map((m, i) => (
-        <div
+        <MetricCard
           key={m.label}
-          role="listitem"
-          className={cn(
-            "flex flex-1 items-baseline justify-center gap-2 px-4 py-3.5 text-sm sm:min-w-0 sm:justify-start sm:px-5",
-            "border-[var(--border)] bg-[var(--surface-elevated)] sm:border-l sm:border-t-0 sm:first:border-l-0 dark:border-gray-800 dark:bg-[#1c1c24]",
-            i > 0 && "border-t sm:border-t-0",
-          )}
-        >
-          <span className="text-lg font-semibold tabular-nums text-brand-700 dark:text-brand-400 sm:text-xl">
-            {m.value}
-          </span>
-          <span className="font-medium capitalize leading-snug text-gray-600 dark:text-gray-400">
-            {m.label}
-          </span>
-        </div>
+          value={m.value}
+          label={m.label}
+          sublabel={m.sublabel}
+          color={COLOR_CYCLE[i % COLOR_CYCLE.length]}
+        />
       ))}
     </div>
   );

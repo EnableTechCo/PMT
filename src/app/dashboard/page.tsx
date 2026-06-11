@@ -8,8 +8,14 @@ import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import DashboardHeader from "@/components/DashboardHeader";
 import { OverviewMetricStrip } from "@/components/OverviewMetricStrip";
+import { MetricCard } from "@/components/MetricCard";
 import { SelectMenu } from "@/components/SelectMenu";
 import CreateTicketModal from "@/components/CreateTicketModal";
+import type {
+  CreateTicketPayload,
+  CreateTicketResultDetail,
+  CreateTicketSubmitDetail,
+} from "@/components/CreateTicketModal";
 import KanbanBoard from "@/components/KanbanBoard";
 import { Pagination } from "@/components/Pagination";
 import {
@@ -82,8 +88,20 @@ const statusConfig = {
     icon: Zap,
     bgColor: "bg-blue-500/10",
   },
+  IN_REVIEW: {
+    label: "In Review",
+    color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+    icon: Eye,
+    bgColor: "bg-cyan-500/10",
+  },
+  QA: {
+    label: "QA",
+    color: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+    icon: AlertCircle,
+    bgColor: "bg-orange-500/10",
+  },
   REVISIONS: {
-    label: "REVIEW",
+    label: "Revisions",
     color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
     icon: AlertCircle,
     bgColor: "bg-yellow-500/10",
@@ -146,7 +164,38 @@ export default function DashboardPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedView, setSelectedView] = useState<"kanban" | "list">("kanban");
   const [currentPage, setCurrentPage] = useState(1);
+  const [openPrCount, setOpenPrCount] = useState(0);
   const pageSize = 9;
+
+  const fetchGithubOverview = useCallback(async () => {
+    if (!user || user.role !== "SUPER_ADMIN") return;
+
+    try {
+      const params = new URLSearchParams();
+      if (!isAllTeams && activeTeamId) {
+        params.set("teamId", activeTeamId);
+      }
+
+      const query = params.toString();
+      const response = await fetch(
+        `/api/analytics/executive${query ? `?${query}` : ""}`,
+        { cache: "no-store" },
+      );
+
+      if (!response.ok) {
+        setOpenPrCount(0);
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        githubAnalytics?: { openPullRequests?: number };
+      };
+
+      setOpenPrCount(payload.githubAnalytics?.openPullRequests ?? 0);
+    } catch {
+      setOpenPrCount(0);
+    }
+  }, [user, isAllTeams, activeTeamId]);
 
   const fetchTickets = useCallback(async () => {
     if (!user) return;
@@ -194,24 +243,36 @@ export default function DashboardPage() {
   }, [authLoading, user, fetchTickets]);
 
   useEffect(() => {
+    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+    void fetchGithubOverview();
+  }, [authLoading, user, fetchGithubOverview]);
+
+  useEffect(() => {
     if (!user) return;
 
     const unsubscribe = onRealtimeChange((detail) => {
       if (
         detail.table !== "Ticket" &&
         detail.table !== "Project" &&
-        detail.table !== "Client"
+        detail.table !== "Client" &&
+        detail.table !== "GithubPullRequest" &&
+        detail.table !== "GithubRepo" &&
+        detail.table !== "GithubBranch"
       ) {
         return;
       }
       void fetchTickets();
+      if (user.role === "SUPER_ADMIN") {
+        void fetchGithubOverview();
+      }
     });
 
     return unsubscribe;
-  }, [user, fetchTickets]);
+  }, [user, fetchTickets, fetchGithubOverview]);
 
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
     try {
+      setError("");
       const response = await fetch(`/api/tickets/${ticketId}`, {
         method: "PATCH",
         headers: {
@@ -220,20 +281,17 @@ export default function DashboardPage() {
         body: JSON.stringify({ status: newStatus }),
       });
 
-      if (!response.ok) throw new Error("Failed to update ticket");
-      fetchTickets();
-    } catch {}
-  };
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(body.error || "Failed to update ticket");
+      }
 
-  type CreateTicketPayload = {
-    title: string;
-    status: string;
-    clientId?: string;
-    teamId: string;
-    assigneeId?: string;
-    priority: string;
-    startDate?: string;
-    dueDate?: string;
+      await fetchTickets();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update ticket");
+    }
   };
 
   const handleCreateTicket = useCallback(
@@ -249,18 +307,42 @@ export default function DashboardPage() {
 
         if (!response.ok) throw new Error("Failed to create ticket");
 
-        await response.json();
-        fetchTickets();
-      } catch {}
+        const created = (await response.json()) as { id?: string };
+        await fetchTickets();
+        return created;
+      } catch {
+        return null;
+      }
     },
     [fetchTickets],
   );
 
   useEffect(() => {
     const onModalSubmit = (event: Event) => {
-      const customEvent = event as CustomEvent<CreateTicketPayload>;
-      void handleCreateTicket(customEvent.detail);
-      setShowCreateModal(false);
+      const customEvent = event as CustomEvent<CreateTicketSubmitDetail>;
+      void (async () => {
+        const created = await handleCreateTicket(customEvent.detail.payload);
+        const ok = Boolean(created?.id);
+
+        window.dispatchEvent(
+          new CustomEvent<CreateTicketResultDetail>(
+            "create-ticket-modal-result",
+            {
+              detail: {
+                ok,
+                message: ok ? undefined : "Failed to create ticket.",
+              },
+            },
+          ),
+        );
+
+        if (!ok) return;
+
+        setShowCreateModal(false);
+        if (customEvent.detail.openAfterCreate && created?.id) {
+          router.push(`/tickets/${created.id}`);
+        }
+      })();
     };
 
     const onModalClose = () => {
@@ -280,7 +362,7 @@ export default function DashboardPage() {
       );
       window.removeEventListener("create-ticket-modal-close", onModalClose);
     };
-  }, [handleCreateTicket]);
+  }, [handleCreateTicket, router]);
 
   const filteredTickets = tickets.filter((ticket) => {
     const matchesSearch =
@@ -316,10 +398,10 @@ export default function DashboardPage() {
         <div className="w-full space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
-              <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <h1 className="mb-2 text-3xl font-bold tracking-tight text-brand-600 dark:text-brand-400">
                 Super Admin Overview
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-brand-600 dark:text-brand-400">
                 Full project oversight and team management.
               </p>
             </div>
@@ -350,18 +432,27 @@ export default function DashboardPage() {
               {
                 label: "total tickets",
                 value: tickets.length,
+                sublabel: "All statuses",
               },
               {
                 label: "in progress",
                 value: tickets.filter((t) => t.status === "IN_PROGRESS").length,
+                sublabel: "Active work",
               },
               {
                 label: "completed",
                 value: tickets.filter((t) => t.status === "COMPLETE").length,
+                sublabel: "Done",
               },
               {
                 label: "teams",
                 value: teams.length,
+                sublabel: "Workspaces",
+              },
+              {
+                label: "open PRs",
+                value: openPrCount,
+                sublabel: "GitHub",
               },
             ]}
           />
@@ -438,18 +529,46 @@ export default function DashboardPage() {
           setShowCreateModal={setShowCreateModal}
         />
 
+        {/* Metric strip */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <MetricCard
+            value={tickets.length}
+            label="Total tickets"
+            sublabel="All statuses"
+            color="blue"
+          />
+          <MetricCard
+            value={tickets.filter((t) => t.status === "IN_PROGRESS").length}
+            label="In progress"
+            sublabel="Active work"
+            color="orange"
+          />
+          <MetricCard
+            value={tickets.filter((t) => t.status === "COMPLETE").length}
+            label="Completed"
+            sublabel="Done"
+            color="green"
+          />
+          <MetricCard
+            value={tickets.filter((t) => t.status === "BACKLOG").length}
+            label="Backlog"
+            sublabel="Not started"
+            color="purple"
+          />
+        </div>
+
         {selectedView === "kanban" && (
           <div className="space-y-6">
             <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
               <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                 <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-brand-500 w-4 h-4" />
                   <input
                     type="text"
                     placeholder="Search tickets or clients..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-10 pr-4 text-gray-900 placeholder-gray-500 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/15 dark:border-gray-700 dark:bg-[#1c1c24] dark:text-white"
+                    className="w-full rounded-lg border-2 border-brand-400 bg-white py-2 pl-10 pr-4 text-gray-900 placeholder-gray-500 transition focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-brand-600 dark:bg-[#1c1c24] dark:text-white"
                   />
                 </div>
 
@@ -465,7 +584,7 @@ export default function DashboardPage() {
                       }))}
                       placeholder="Team"
                       className="min-w-[180px]"
-                      triggerClassName="bg-gray-100/80 dark:bg-slate-800/80"
+                      triggerClassName="bg-blue-100/60 border-2 border-blue-400 dark:bg-blue-950/40 dark:border-blue-700"
                     />
                   ) : null}
 
@@ -475,7 +594,7 @@ export default function DashboardPage() {
                     options={statusFilterOptions}
                     placeholder="Status"
                     className="min-w-[200px]"
-                    triggerClassName="bg-gray-100/80 dark:bg-slate-800/80"
+                    triggerClassName="bg-purple-100/60 border-2 border-purple-400 dark:bg-purple-950/40 dark:border-purple-700"
                   />
 
                   <SelectMenu
@@ -484,7 +603,7 @@ export default function DashboardPage() {
                     options={priorityFilterOptions}
                     placeholder="Priority"
                     className="min-w-[180px]"
-                    triggerClassName="bg-gray-100/80 dark:bg-slate-800/80"
+                    triggerClassName="bg-orange-100/60 border-2 border-orange-400 dark:bg-orange-950/40 dark:border-orange-700"
                   />
                 </div>
               </div>
@@ -514,7 +633,7 @@ export default function DashboardPage() {
                       placeholder="Search tickets..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-10 pr-4 text-gray-900 placeholder-gray-500 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/15 dark:border-gray-700 dark:bg-[#1c1c24] dark:text-white"
+                      className="w-full rounded-lg border-2 border-brand-400 bg-white py-2 pl-10 pr-4 text-gray-900 placeholder-gray-500 transition focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-brand-600 dark:bg-[#1c1c24] dark:text-white"
                     />
                   </div>
                 </div>
@@ -531,7 +650,7 @@ export default function DashboardPage() {
                       }))}
                       placeholder="Team"
                       className="min-w-[180px]"
-                      triggerClassName="bg-gray-100/80 dark:bg-slate-800/80"
+                      triggerClassName="bg-blue-100/60 border-2 border-blue-400 dark:bg-blue-950/40 dark:border-blue-700"
                     />
                   ) : null}
 
@@ -541,7 +660,7 @@ export default function DashboardPage() {
                     options={statusFilterOptions}
                     placeholder="Status"
                     className="min-w-[200px]"
-                    triggerClassName="bg-gray-100/80 dark:bg-slate-800/80"
+                    triggerClassName="bg-purple-100/60 border-2 border-purple-400 dark:bg-purple-950/40 dark:border-purple-700"
                   />
 
                   <SelectMenu
@@ -550,7 +669,7 @@ export default function DashboardPage() {
                     options={priorityFilterOptions}
                     placeholder="Priority"
                     className="min-w-[180px]"
-                    triggerClassName="bg-gray-100/80 dark:bg-slate-800/80"
+                    triggerClassName="bg-orange-100/60 border-2 border-orange-400 dark:bg-orange-950/40 dark:border-orange-700"
                   />
                 </div>
               </div>
@@ -581,8 +700,8 @@ export default function DashboardPage() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="text-left p-6 text-gray-500 font-medium">
-                          Title
+                        <th className="text-left p-6 text-brand-700 font-bold dark:text-brand-300">
+                          Assignee Title
                         </th>
                         <th className="text-left p-6 text-gray-500 font-medium">
                           Assignee
@@ -619,7 +738,7 @@ export default function DashboardPage() {
                               }
                               router.push(`/tickets/${ticket.id}`);
                             }}
-                            className="border-b border-gray-200 transition-colors hover:bg-gray-600 cursor-pointer"
+                            className="border-b border-brand-200 transition-colors hover:bg-brand-50 dark:hover:bg-brand-950/30 dark:border-brand-800 cursor-pointer"
                           >
                             <td className="p-6">
                               <div>

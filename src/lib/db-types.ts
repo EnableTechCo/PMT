@@ -11,6 +11,8 @@ export const TicketStatus = {
   TODO: "TODO",
   REFINE: "REFINE",
   IN_PROGRESS: "IN_PROGRESS",
+  IN_REVIEW: "IN_REVIEW",
+  QA: "QA",
   REVISIONS: "REVISIONS",
   CLIENT_REVIEW: "CLIENT_REVIEW",
   COMPLETE: "COMPLETE",
@@ -47,6 +49,15 @@ export const ProjectHealth = {
 
 export type ProjectHealth = (typeof ProjectHealth)[keyof typeof ProjectHealth];
 
+export const SprintStatus = {
+  PLANNED: "PLANNED",
+  ACTIVE: "ACTIVE",
+  COMPLETED: "COMPLETED",
+  CLOSED: "CLOSED",
+} as const;
+
+export type SprintStatus = (typeof SprintStatus)[keyof typeof SprintStatus];
+
 export interface User {
   id: string;
   email: string;
@@ -65,6 +76,21 @@ export interface Client {
   name: string;
   email: string;
   isInvited: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Sprint {
+  id: string;
+  teamId: string;
+  projectId: string | null;
+  createdById: string;
+  name: string;
+  goal: string | null;
+  status: SprintStatus;
+  startsAt: Date;
+  endsAt: Date;
+  completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -2,57 +2,59 @@
 
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MetricCard } from "@/components/MetricCard";
+import type { MetricCardColor } from "@/components/MetricCard";
 
 interface StatCardProps {
   title: string;
   value: string | number;
   change?: number;
   changeLabel?: string;
-  icon: React.ReactNode;
-  color: "blue" | "green" | "orange" | "red" | "purple";
+  icon?: React.ReactNode;
+  color: MetricCardColor;
   trend?: "up" | "down" | "neutral";
 }
 
 const colorClasses = {
   blue: {
-    bg: "from-blue-500/10 to-blue-600/10",
-    border: "border-blue-500/20",
-    icon: "bg-blue-500/20",
-    iconColor: "text-blue-700 dark:text-blue-400",
-    value: "text-blue-950 dark:text-blue-200",
-    change: "text-blue-700 dark:text-blue-400",
+    stripe: "bg-blue-500",
+    iconBg: "bg-blue-50 dark:bg-blue-950/40",
+    iconColor: "text-blue-600 dark:text-blue-400",
+    value: "text-blue-700 dark:text-blue-300",
+    change: "text-blue-600 dark:text-blue-400",
+    tag: "text-blue-500/70 dark:text-blue-400/60",
   },
   green: {
-    bg: "from-green-500/10 to-green-600/10",
-    border: "border-green-500/20",
-    icon: "bg-green-500/20",
-    iconColor: "text-green-700 dark:text-green-400",
-    value: "text-green-950 dark:text-green-200",
-    change: "text-green-700 dark:text-green-400",
+    stripe: "bg-emerald-500",
+    iconBg: "bg-emerald-50 dark:bg-emerald-950/40",
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+    value: "text-emerald-700 dark:text-emerald-300",
+    change: "text-emerald-600 dark:text-emerald-400",
+    tag: "text-emerald-500/70 dark:text-emerald-400/60",
   },
   orange: {
-    bg: "from-orange-500/10 to-orange-600/10",
-    border: "border-orange-500/20",
-    icon: "bg-orange-500/20",
-    iconColor: "text-orange-700 dark:text-orange-400",
-    value: "text-orange-950 dark:text-orange-200",
-    change: "text-orange-700 dark:text-orange-400",
+    stripe: "bg-orange-400",
+    iconBg: "bg-orange-50 dark:bg-orange-950/40",
+    iconColor: "text-orange-600 dark:text-orange-400",
+    value: "text-orange-700 dark:text-orange-300",
+    change: "text-orange-600 dark:text-orange-400",
+    tag: "text-orange-500/70 dark:text-orange-400/60",
   },
   red: {
-    bg: "from-red-500/10 to-red-600/10",
-    border: "border-red-500/20",
-    icon: "bg-red-500/20",
-    iconColor: "text-red-700 dark:text-red-400",
-    value: "text-red-950 dark:text-red-200",
-    change: "text-red-700 dark:text-red-400",
+    stripe: "bg-rose-500",
+    iconBg: "bg-rose-50 dark:bg-rose-950/40",
+    iconColor: "text-rose-600 dark:text-rose-400",
+    value: "text-rose-700 dark:text-rose-300",
+    change: "text-rose-600 dark:text-rose-400",
+    tag: "text-rose-500/70 dark:text-rose-400/60",
   },
   purple: {
-    bg: "from-indigo-500/10 to-indigo-600/10",
-    border: "border-indigo-500/20",
-    icon: "bg-indigo-500/20",
-    iconColor: "text-indigo-700 dark:text-indigo-400",
-    value: "text-indigo-950 dark:text-indigo-200",
-    change: "text-indigo-700 dark:text-indigo-400",
+    stripe: "bg-purple-500",
+    iconBg: "bg-purple-50 dark:bg-purple-950/40",
+    iconColor: "text-purple-600 dark:text-purple-400",
+    value: "text-purple-700 dark:text-purple-300",
+    change: "text-purple-600 dark:text-purple-400",
+    tag: "text-purple-500/70 dark:text-purple-400/60",
   },
 };
 
@@ -61,11 +63,11 @@ export default function StatCard({
   value,
   change,
   changeLabel,
-  icon,
   color,
   trend = "neutral",
 }: StatCardProps) {
-  const colors = colorClasses[color];
+  const colors =
+    colorClasses[color as keyof typeof colorClasses] ?? colorClasses.blue;
 
   const getTrendIcon = () => {
     switch (trend) {
@@ -78,41 +80,19 @@ export default function StatCard({
     }
   };
 
+  const sublabel =
+    change !== undefined
+      ? `${change > 0 ? "+" : ""}${change}% ${changeLabel ?? ""}`.trim()
+      : changeLabel;
+
   return (
-    <div
-      className={cn(
-        "bg-gradient-to-br backdrop-blur-sm rounded-xl p-6 border transition-all duration-300 hover:scale-105 card-hover",
-        colors.bg,
-        colors.border,
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <p className={cn("text-sm font-medium", colors.iconColor)}>{title}</p>
-          <p className={cn("text-2xl font-bold mt-1", colors.value)}>{value}</p>
-          {change !== undefined && (
-            <div className="flex items-center space-x-1 mt-2">
-              <span className={cn("text-xs", colors.change)}>
-                {getTrendIcon()}
-              </span>
-              <span className={cn("text-xs font-medium", colors.change)}>
-                {change > 0 ? "+" : ""}
-                {change}%
-              </span>
-              {changeLabel && (
-                <span className="text-xs text-gray-600 dark:text-gray-400 ml-1">
-                  {changeLabel}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-        <div className={cn("p-3 rounded-lg", colors.icon)}>
-          <div className={cn("w-6 h-6", colors.iconColor)}>{icon}</div>
-        </div>
-      </div>
-    </div>
+    <MetricCard value={value} label={title} sublabel={sublabel} color={color} />
   );
+
+  // trend icon kept for future use
+  void getTrendIcon;
+  void colors;
+  void cn;
 }
 
 interface QuickStatsProps {

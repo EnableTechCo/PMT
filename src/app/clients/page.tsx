@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
+import { MetricCard } from "@/components/MetricCard";
 import { SelectMenu } from "@/components/SelectMenu";
 import {
   Plus,
@@ -58,7 +59,7 @@ export default function ClientsPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showProjectsModal, setShowProjectsModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmAction, _setConfirmAction] = useState<ConfirmAction>("delete");
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>("delete");
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [confirmClient, setConfirmClient] = useState<Client | null>(null);
@@ -231,6 +232,22 @@ export default function ClientsPage() {
     } finally {
       setLoadingGithubRepos(false);
     }
+  };
+
+  const openEditClient = (client: Client) => {
+    setEditClient({
+      id: client.id,
+      name: client.name,
+      email: client.email,
+      isInvited: client.isInvited,
+    });
+    setShowEditModal(true);
+  };
+
+  const openConfirmAction = (client: Client, action: ConfirmAction) => {
+    setConfirmClient(client);
+    setConfirmAction(action);
+    setShowConfirmModal(true);
   };
 
   const handleUpdateClient = async (e: React.FormEvent) => {
@@ -460,7 +477,7 @@ export default function ClientsPage() {
     }
   };
 
-  const canManageClients = false;
+  const canManageClients = user?.role === "SUPER_ADMIN";
   const canViewClients = user?.role === "USER" || user?.role === "SUPER_ADMIN";
   const invitedCount = clients.filter((client) => client.isInvited).length;
   const activatedCount = clients.filter(
@@ -553,38 +570,30 @@ export default function ClientsPage() {
         ) : (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-800 dark:bg-[#1c1c24]">
-                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  Total clients
-                </p>
-                <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
-                  {clients.length}
-                </p>
-              </div>
-              <div className="rounded-xl border border-green-200 bg-green-50/70 px-4 py-3 shadow-sm dark:border-green-900/40 dark:bg-green-900/10">
-                <p className="text-xs uppercase tracking-wide text-green-700 dark:text-green-300">
-                  Invited
-                </p>
-                <p className="mt-1 text-2xl font-semibold text-green-800 dark:text-green-200">
-                  {invitedCount}
-                </p>
-              </div>
-              <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 shadow-sm dark:border-sky-900/40 dark:bg-sky-900/10">
-                <p className="text-xs uppercase tracking-wide text-sky-700 dark:text-sky-300">
-                  Activated
-                </p>
-                <p className="mt-1 text-2xl font-semibold text-sky-800 dark:text-sky-200">
-                  {activatedCount}
-                </p>
-              </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 shadow-sm dark:border-amber-900/40 dark:bg-amber-900/10">
-                <p className="text-xs uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                  Total client projects
-                </p>
-                <p className="mt-1 text-2xl font-semibold text-amber-800 dark:text-amber-200">
-                  {totalClientProjects}
-                </p>
-              </div>
+              <MetricCard
+                value={clients.length}
+                label="Total clients"
+                sublabel="All accounts"
+                color="blue"
+              />
+              <MetricCard
+                value={invitedCount}
+                label="Invited"
+                sublabel="Invite sent"
+                color="green"
+              />
+              <MetricCard
+                value={activatedCount}
+                label="Activated"
+                sublabel="Portal access"
+                color="indigo"
+              />
+              <MetricCard
+                value={totalClientProjects}
+                label="Client projects"
+                sublabel="Across all clients"
+                color="orange"
+              />
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg dark:border-gray-800 dark:bg-[#1c1c24]">
@@ -695,6 +704,48 @@ export default function ClientsPage() {
                               <FolderKanban className="h-3.5 w-3.5" />
                               Add project
                             </button>
+                            {canManageClients ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditClient(client)}
+                                  className="inline-flex h-8 items-center rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
+                                  title="Edit client"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openConfirmAction(client, "resendInvite")
+                                  }
+                                  className="inline-flex h-8 items-center rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
+                                  title="Resend invite"
+                                >
+                                  Resend invite
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openConfirmAction(client, "resetPassword")
+                                  }
+                                  className="inline-flex h-8 items-center rounded-md border border-gray-300 px-2.5 text-xs font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
+                                  title="Send reset password"
+                                >
+                                  Reset password
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openConfirmAction(client, "delete")
+                                  }
+                                  className="inline-flex h-8 items-center rounded-md border border-red-300 px-2.5 text-xs font-medium text-red-700 transition hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30"
+                                  title="Delete client"
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            ) : null}
                           </div>
                         </td>
                       </tr>

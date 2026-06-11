@@ -28,6 +28,8 @@
     "pm2:stop": "pm2 stop pm-tool",
     "pm2:restart": "pm2 restart pm-tool",
     "pm2:logs": "pm2 logs pm-tool",
+    "github:fetch-prs": "node scripts/fetch-all-prs.js",
+    "github:audit-pr-ticket-links": "node scripts/audit-pr-ticket-links.js",
     "monitoring:check-sentry-inbox": "node scripts/check-sentry-dev-inbox.js",
     "backup:db": "pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql",
     "health": "curl -f http://localhost:3000/api/health || exit 1"
@@ -56,6 +58,7 @@
     "import-in-the-middle": "^3.0.1",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.525.0",
+    "@phosphor-icons/react": "^2.1.10",
     "next": "15.5.18",
     "next-remove-imports": "^1.0.13",
     "nodemailer": "^7.0.13",

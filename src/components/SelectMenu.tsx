@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, type CSSProperties } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useId,
+  type CSSProperties,
+} from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,6 +24,8 @@ export type SelectMenuProps = {
   options: SelectMenuOption[];
   disabled?: boolean;
   placeholder?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
   className?: string;
   triggerClassName?: string;
   menuClassName?: string;
@@ -29,18 +38,33 @@ export function SelectMenu({
   options,
   disabled = false,
   placeholder = "Select…",
+  searchable = false,
+  searchPlaceholder = "Search...",
   className,
   triggerClassName,
   menuClassName,
   size = "md",
 }: SelectMenuProps) {
+  const instanceId = useId();
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
+  const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const selected = options.find((o) => o.value === value);
+  const filteredOptions = useMemo(() => {
+    const trimmed = query.trim().toLowerCase();
+    if (!searchable || trimmed.length === 0) {
+      return options;
+    }
+
+    return options.filter((option) =>
+      option.label.toLowerCase().includes(trimmed),
+    );
+  }, [options, query, searchable]);
 
   useEffect(() => {
     if (!open) return;
@@ -53,11 +77,15 @@ export function SelectMenu({
       const viewportPadding = 8;
       const spaceBelow = window.innerHeight - rect.bottom;
       const spaceAbove = rect.top;
+      const measuredMenuHeight = Math.min(
+        maxMenuHeight,
+        menuRef.current?.scrollHeight ?? maxMenuHeight,
+      );
       const openUpward =
         spaceBelow < maxMenuHeight + 8 && spaceAbove > spaceBelow;
 
       const top = openUpward
-        ? Math.max(viewportPadding, rect.top - maxMenuHeight - 4)
+        ? Math.max(viewportPadding, rect.top - measuredMenuHeight - 4)
         : rect.bottom + 4;
 
       setMenuStyle({
@@ -95,13 +123,49 @@ export function SelectMenu({
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", onScroll, true);
 
+    if (searchable) {
+      window.requestAnimationFrame(() => {
+        searchRef.current?.focus();
+      });
+    }
+
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", onScroll, true);
     };
-  }, [open]);
+  }, [open, searchable]);
+
+  useEffect(() => {
+    if (!open && query) {
+      setQuery("");
+    }
+  }, [open, query]);
+
+  useEffect(() => {
+    const onExternalOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<{ id?: string }>;
+      if (customEvent.detail?.id !== instanceId) {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener("select-menu-opened", onExternalOpen);
+    return () => {
+      window.removeEventListener("select-menu-opened", onExternalOpen);
+    };
+  }, [instanceId]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    window.dispatchEvent(
+      new CustomEvent("select-menu-opened", {
+        detail: { id: instanceId },
+      }),
+    );
+  }, [instanceId, open]);
 
   const mdTrigger = "min-h-9 px-3 py-2 text-sm rounded-md gap-2";
   const smTrigger = "min-h-8 px-2 py-1.5 text-xs rounded-md gap-1.5";
@@ -116,7 +180,12 @@ export function SelectMenu({
         disabled={disabled}
         aria-expanded={open}
         aria-haspopup="listbox"
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (disabled) return;
+          setOpen((isOpen) => !isOpen);
+        }}
         className={cn(
           "flex w-full cursor-pointer items-center justify-between border border-gray-200 bg-white text-left text-gray-900 outline-none",
           "hover:bg-gray-50",
@@ -154,12 +223,40 @@ export function SelectMenu({
               menuClassName,
             )}
           >
+            {searchable ? (
+              <div className="border-b border-gray-200 p-2 dark:border-gray-700">
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  placeholder={searchPlaceholder}
+                  className={cn(
+                    "w-full rounded-md border border-gray-200 bg-white text-gray-900 outline-none",
+                    "focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20",
+                    "dark:border-gray-700 dark:bg-[#1c1c24] dark:text-gray-100",
+                    size === "md" ? "px-3 py-2 text-sm" : "px-2 py-1.5 text-xs",
+                  )}
+                />
+              </div>
+            ) : null}
             <div className="max-h-60 overflow-y-auto overscroll-contain">
-              {options.map((opt) => {
+              {filteredOptions.length === 0 ? (
+                <div
+                  className={cn(
+                    "text-gray-500 dark:text-gray-400",
+                    size === "md" ? mdItem : smItem,
+                  )}
+                >
+                  No results
+                </div>
+              ) : null}
+              {filteredOptions.map((opt, index) => {
                 const isActive = opt.value === value;
                 return (
                   <button
-                    key={opt.value}
+                    key={`${opt.value}::${opt.label}::${index}`}
                     type="button"
                     role="option"
                     aria-selected={isActive}

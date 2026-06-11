@@ -1,35 +1,41 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Pagination } from "@/components/Pagination";
 import CreateTicketModal from "@/components/CreateTicketModal";
+import type {
+  CreateTicketPayload,
+  CreateTicketResultDetail,
+  CreateTicketSubmitDetail,
+} from "@/components/CreateTicketModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { SelectMenu } from "@/components/SelectMenu";
 import {
-  Plus,
-  Filter,
-  Search,
-  Calendar,
-  User,
-  Building,
-  Eye,
-  Trash2,
-  CheckCircle,
-  AlertCircle,
-  Clock as ClockIcon,
-  Zap,
-  ListTodo,
-  Upload,
-} from "lucide-react";
+  IconContext,
+  PlusIcon as Plus,
+  FunnelIcon as Filter,
+  MagnifyingGlassIcon as Search,
+  CalendarBlankIcon as Calendar,
+  UserIcon as User,
+  EyeIcon as Eye,
+  TrashIcon as Trash2,
+  CheckCircleIcon as CheckCircle,
+  WarningCircleIcon as AlertCircle,
+  ClockIcon as ClockIcon,
+  LightningIcon as Zap,
+  ListChecksIcon as ListTodo,
+  UploadSimpleIcon as Upload,
+} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
 interface Ticket {
   id: string;
+  selectorId?: number | null;
   title: string;
   description?: string | null;
   status: string;
@@ -59,6 +65,13 @@ interface Ticket {
     id: string;
     name: string;
   } | null;
+}
+
+function ticketDisplayId(ticket: Ticket): string {
+  if (typeof ticket.selectorId === "number") {
+    return `#${ticket.selectorId}`;
+  }
+  return "No selector ID";
 }
 
 interface AssignableUser {
@@ -110,8 +123,20 @@ const statusConfig = {
       "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30",
     icon: Zap,
   },
+  IN_REVIEW: {
+    label: "In Review",
+    color:
+      "bg-cyan-100 text-cyan-800 border border-cyan-300 dark:bg-cyan-500/20 dark:text-cyan-400 dark:border-cyan-500/30",
+    icon: Eye,
+  },
+  QA: {
+    label: "QA",
+    color:
+      "bg-orange-100 text-orange-800 border border-orange-300 dark:bg-orange-500/20 dark:text-orange-400 dark:border-orange-500/30",
+    icon: AlertCircle,
+  },
   REVISIONS: {
-    label: "REVIEW",
+    label: "Revisions",
     color:
       "bg-yellow-100 text-yellow-900 border border-yellow-400 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30",
     icon: AlertCircle,
@@ -166,6 +191,8 @@ const SAMPLE_IMPORT_JSON = `[
 
 export default function TicketsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const hasAppliedQueryRef = useRef(false);
   const { user } = useAuth();
   const {
     teams,
@@ -198,7 +225,35 @@ export default function TicketsPage() {
   const pageSize = 9;
 
   const [priorityFilter, setPriorityFilter] = useState<string>("");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("");
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+
+  useEffect(() => {
+    if (!user || hasAppliedQueryRef.current) return;
+
+    const queryStatus = searchParams.get("status");
+    const queryPriority = searchParams.get("priority");
+    const queryAssigneeId = searchParams.get("assigneeId");
+    const queryTeamId = searchParams.get("teamId");
+    const queryAllTeams = searchParams.get("allTeams") === "1";
+
+    if (queryStatus) setStatusFilter(queryStatus);
+    if (queryPriority) setPriorityFilter(queryPriority);
+    if (queryAssigneeId) setAssigneeFilter(queryAssigneeId);
+
+    if (user.role === "SUPER_ADMIN") {
+      if (queryAllTeams) {
+        setAllTeamsMode(true);
+      } else if (queryTeamId) {
+        setAllTeamsMode(false);
+        setActiveTeamId(queryTeamId);
+      }
+    } else if (queryTeamId && user.role === "USER") {
+      setActiveTeamId(queryTeamId);
+    }
+
+    hasAppliedQueryRef.current = true;
+  }, [searchParams, user, setActiveTeamId, setAllTeamsMode]);
 
   const fetchAssignableUsers = useCallback(async () => {
     if (!user || user.role === "CLIENT") {
@@ -276,6 +331,9 @@ export default function TicketsPage() {
       if (priorityFilter) {
         params.append("priority", priorityFilter);
       }
+      if (assigneeFilter) {
+        params.append("assigneeId", assigneeFilter);
+      }
       if (user.role === "USER") {
         if (!activeTeamId) {
           setTickets([]);
@@ -302,7 +360,14 @@ export default function TicketsPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, priorityFilter, user, activeTeamId, isAllTeams]);
+  }, [
+    statusFilter,
+    priorityFilter,
+    assigneeFilter,
+    user,
+    activeTeamId,
+    isAllTeams,
+  ]);
 
   useEffect(() => {
     if (user && user.role !== "CLIENT") fetchTickets();
@@ -328,7 +393,14 @@ export default function TicketsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, priorityFilter, activeTeamId, isAllTeams]);
+  }, [
+    searchQuery,
+    statusFilter,
+    priorityFilter,
+    assigneeFilter,
+    activeTeamId,
+    isAllTeams,
+  ]);
 
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
     const previousTickets = tickets;
@@ -471,19 +543,6 @@ export default function TicketsPage() {
     void fetchAssignableUsers();
   }, [user, activeTeamId, isAllTeams, fetchAssignableUsers]);
 
-  type CreateTicketPayload = {
-    title: string;
-    status: string;
-    clientId?: string;
-    teamId: string;
-    assigneeId?: string;
-    projectId?: string;
-    description?: string;
-    priority: string;
-    startDate?: string;
-    dueDate?: string;
-  };
-
   const handleCreateTicket = useCallback(
     async (ticketData: CreateTicketPayload) => {
       try {
@@ -499,9 +558,12 @@ export default function TicketsPage() {
           throw new Error("Failed to create ticket");
         }
 
+        const created = (await response.json()) as { id?: string };
         await fetchTickets();
+        return created;
       } catch {
         setError("Failed to create ticket");
+        return null;
       }
     },
     [fetchTickets],
@@ -509,9 +571,30 @@ export default function TicketsPage() {
 
   useEffect(() => {
     const onModalSubmit = (event: Event) => {
-      const customEvent = event as CustomEvent<CreateTicketPayload>;
-      void handleCreateTicket(customEvent.detail);
-      setShowCreateModal(false);
+      const customEvent = event as CustomEvent<CreateTicketSubmitDetail>;
+      void (async () => {
+        const created = await handleCreateTicket(customEvent.detail.payload);
+        const ok = Boolean(created?.id);
+
+        window.dispatchEvent(
+          new CustomEvent<CreateTicketResultDetail>(
+            "create-ticket-modal-result",
+            {
+              detail: {
+                ok,
+                message: ok ? undefined : "Failed to create ticket.",
+              },
+            },
+          ),
+        );
+
+        if (!ok) return;
+
+        setShowCreateModal(false);
+        if (customEvent.detail.openAfterCreate && created?.id) {
+          router.push(`/tickets/${created.id}`);
+        }
+      })();
     };
 
     const onModalClose = () => {
@@ -531,7 +614,7 @@ export default function TicketsPage() {
       );
       window.removeEventListener("create-ticket-modal-close", onModalClose);
     };
-  }, [handleCreateTicket]);
+  }, [handleCreateTicket, router]);
 
   const deleteTicketById = async (ticketId: string) => {
     try {
@@ -634,263 +717,307 @@ export default function TicketsPage() {
   }
 
   return (
-    <DashboardLayout>
-      <div className="w-full space-y-6">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              All Tickets
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Manage and track all your project tickets
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {user.role !== "CLIENT" && (
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(true)}
-                className="btn-primary flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create Ticket</span>
-              </button>
-            )}
-            {user.role === "SUPER_ADMIN" && (
-              <button
-                type="button"
-                onClick={() => setShowImportModal(true)}
-                className="inline-flex items-center space-x-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Import Tasks</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Search and Filters */}
-        <div className="bg-white/80 dark:bg-gray-900/50 backdrop-blur-xl rounded-2xl border border-gray-200/80 dark:border-gray-800/50 p-6">
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search */}
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search tickets, clients, or assignees..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-              />
+    <IconContext.Provider value={{ weight: "thin" }}>
+      <DashboardLayout>
+        <div className="w-full space-y-6">
+          {/* Header */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                All Tickets
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400">
+                Manage and track all your project tickets
+              </p>
             </div>
 
-            {/* Status Filter */}
-            <div className="flex items-center space-x-3">
-              <SelectMenu
-                value={
-                  user.role === "SUPER_ADMIN"
-                    ? isAllTeams
-                      ? "__all__"
+            <div className="flex items-center gap-3">
+              {user.role !== "CLIENT" && (
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  className="btn-primary flex items-center space-x-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Ticket</span>
+                </button>
+              )}
+              {user.role === "SUPER_ADMIN" && (
+                <button
+                  type="button"
+                  onClick={() => setShowImportModal(true)}
+                  className="inline-flex items-center space-x-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Import Tasks</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Search and Filters */}
+          <div className="bg-white/80 dark:bg-gray-900/50 backdrop-blur-xl rounded-2xl border border-gray-200/80 dark:border-gray-800/50 p-6">
+            <div className="flex flex-col lg:flex-row gap-4">
+              {/* Search */}
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Search tickets, clients, or assignees..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                />
+              </div>
+
+              {/* Status Filter */}
+              <div className="flex items-center space-x-3">
+                <SelectMenu
+                  value={
+                    user.role === "SUPER_ADMIN"
+                      ? isAllTeams
+                        ? "__all__"
+                        : activeTeamId
                       : activeTeamId
-                    : activeTeamId
-                }
-                onChange={(v) => {
-                  if (user.role === "SUPER_ADMIN") {
-                    if (v === "__all__") setAllTeamsMode(true);
-                    else {
-                      setAllTeamsMode(false);
+                  }
+                  onChange={(v) => {
+                    if (user.role === "SUPER_ADMIN") {
+                      if (v === "__all__") setAllTeamsMode(true);
+                      else {
+                        setAllTeamsMode(false);
+                        setActiveTeamId(v);
+                      }
+                    } else {
                       setActiveTeamId(v);
                     }
-                  } else {
-                    setActiveTeamId(v);
+                  }}
+                  disabled={
+                    teamLoading || teams.length === 0 || user.role === "CLIENT"
                   }
-                }}
-                disabled={
-                  teamLoading || teams.length === 0 || user.role === "CLIENT"
-                }
-                options={[
-                  ...(user?.role === "SUPER_ADMIN"
-                    ? [{ value: "__all__", label: "All teams" }]
-                    : []),
-                  ...teams.map((t) => ({ value: t.id, label: t.name })),
-                ]}
-                className="min-w-[190px]"
-                triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
-              />
-              <Filter className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-              <SelectMenu
-                value={statusFilter}
-                onChange={setStatusFilter}
-                options={[
-                  { value: "", label: "All Statuses" },
-                  ...Object.entries(statusConfig).map(([key, config]) => ({
-                    value: key,
-                    label: config.label,
-                  })),
-                ]}
-                className="min-w-[170px]"
-                triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
-              />
-              <SelectMenu
-                value={priorityFilter}
-                onChange={setPriorityFilter}
-                options={priorityFilterOptions}
-                className="min-w-[170px]"
-                triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
-              />
+                  options={[
+                    ...(user?.role === "SUPER_ADMIN"
+                      ? [{ value: "__all__", label: "All teams" }]
+                      : []),
+                    ...teams.map((t) => ({ value: t.id, label: t.name })),
+                  ]}
+                  className="min-w-[190px]"
+                  triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                />
+                <Filter className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                <SelectMenu
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  options={[
+                    { value: "", label: "All Statuses" },
+                    ...Object.entries(statusConfig).map(([key, config]) => ({
+                      value: key,
+                      label: config.label,
+                    })),
+                  ]}
+                  className="min-w-[170px]"
+                  triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                />
+                <SelectMenu
+                  value={priorityFilter}
+                  onChange={setPriorityFilter}
+                  options={priorityFilterOptions}
+                  className="min-w-[170px]"
+                  triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                />
+                <SelectMenu
+                  value={assigneeFilter}
+                  onChange={setAssigneeFilter}
+                  options={[
+                    { value: "", label: "All assignees" },
+                    ...assignableUsers.map((member) => ({
+                      value: member.id,
+                      label: member.name,
+                    })),
+                  ]}
+                  className="min-w-[170px]"
+                  triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Error message */}
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
-            <p className="text-red-400">{error}</p>
-          </div>
-        )}
-
-        {/* Tickets Grid/List */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-          </div>
-        ) : filteredTickets.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Search className="w-8 h-8 text-gray-500 dark:text-gray-400" />
+          {/* Error message */}
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+              <p className="text-red-400">{error}</p>
             </div>
-            <p className="text-gray-600 dark:text-gray-400 text-lg">
-              No tickets found
-            </p>
-            <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
-              Try adjusting your search or filters
-            </p>
-          </div>
-        ) : (
-          <>
-            <div
-              className={cn(
-                "space-y-4",
-                viewMode === "grid"
-                  ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-                  : "",
-              )}
-            >
-              {pagedTickets.map((ticket) => {
-                const status =
-                  statusConfig[ticket.status as keyof typeof statusConfig];
-                const StatusIcon = status.icon;
+          )}
 
-                return (
-                  <div
-                    key={ticket.id}
-                    onClick={(e) => {
-                      if (
-                        (e.target as HTMLElement).closest(
-                          "button, select, option, a",
-                        )
-                      ) {
-                        return;
-                      }
-                      goToTicket(ticket.id);
-                    }}
-                    className="group cursor-pointer rounded-xl border border-gray-200/80 bg-white/90 p-6 backdrop-blur-xl transition-all duration-200 hover:border-brand-300/50 dark:border-gray-800/50 dark:bg-gray-900/50 dark:hover:border-gray-700/50"
-                  >
-                    {/* Header */}
-                    <div className="mb-4 flex items-start justify-between">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="line-clamp-2 min-h-10 flex-1 text-sm font-medium normal-case leading-5 text-slate-900 dark:text-white mb-2">
-                          {ticket.title}
-                        </h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Click card to view full details
-                        </p>
-                        <div className="mt-2 flex items-center space-x-2">
-                          <span
-                            className={cn(
-                              "inline-flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium border",
-                              status.color,
+          {/* Tickets Grid/List */}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+            </div>
+          ) : filteredTickets.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Search className="w-8 h-8 text-gray-500 dark:text-gray-400" />
+              </div>
+              <p className="text-gray-600 dark:text-gray-400 text-lg">
+                No tickets found
+              </p>
+              <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
+                Try adjusting your search or filters
+              </p>
+            </div>
+          ) : (
+            <>
+              <div
+                className={cn(
+                  "space-y-4",
+                  viewMode === "grid"
+                    ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                    : "",
+                )}
+              >
+                {pagedTickets.map((ticket) => {
+                  const status =
+                    statusConfig[ticket.status as keyof typeof statusConfig];
+                  const StatusIcon = status.icon;
+                  const displayId = ticketDisplayId(ticket);
+
+                  return (
+                    <div
+                      key={ticket.id}
+                      onClick={(e) => {
+                        if (
+                          (e.target as HTMLElement).closest(
+                            "button, select, option, a",
+                          )
+                        ) {
+                          return;
+                        }
+                        goToTicket(ticket.id);
+                      }}
+                      className="group cursor-pointer rounded-xl border border-gray-200/80 bg-white/90 p-6 backdrop-blur-xl transition-all duration-200 hover:border-brand-300/50 dark:border-gray-800/50 dark:bg-gray-900/50 dark:hover:border-gray-700/50"
+                    >
+                      {/* Header */}
+                      <div className="mb-4 flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+                            {displayId}
+                          </p>
+                          <h3 className="line-clamp-2 min-h-10 flex-1 text-sm font-medium normal-case leading-5 text-slate-900 dark:text-white mb-2">
+                            {ticket.title}
+                          </h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Click card to view full details
+                          </p>
+                          <div className="mt-2 flex items-center space-x-2">
+                            <span
+                              className={cn(
+                                "inline-flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium border",
+                                status.color,
+                              )}
+                            >
+                              <StatusIcon className="w-3 h-3" />
+                              <span>{status.label}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {(user.role === "USER" ||
+                          user.role === "SUPER_ADMIN") && (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                goToTicket(ticket.id);
+                              }}
+                              className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-white/10 dark:hover:text-brand-400"
+                              title="View ticket details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteTicket(ticket.id);
+                              }}
+                              className="rounded-md p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                              title="Delete ticket"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Details */}
+                      <div className="space-y-3">
+                        {/* Project */}
+
+                        <div className="w-full">
+                          <SelectMenu
+                            value={ticket.assignee?.id ?? "__unassigned__"}
+                            onChange={(value) =>
+                              handleAssigneeChange(ticket.id, value)
+                            }
+                            options={[
+                              {
+                                value: "__unassigned__",
+                                label: "Assignee: Unassigned",
+                              },
+                              ...assignableUsers.map((member) => ({
+                                value: member.id,
+                                label: `${member.name}`,
+                              })),
+                            ]}
+                            className="w-full"
+                            triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div className="flex items-center space-x-2 text-sm text-gray-400">
+                          <ListTodo className="w-4 h-4" />
+                          <span>{ticket.project?.name || "No project"}</span>
+                        </div>
+
+                        <div className="flex items-center space-x-2 text-sm text-gray-400">
+                          <User className="w-4 h-4" />
+                          <span>{ticket.assignee?.name || "Unassigned"}</span>
+                        </div>
+
+                        <div className="w-full">
+                          <SelectMenu
+                            value={ticket.priority ?? "NONE"}
+                            onChange={(value) =>
+                              handlePriorityChange(ticket.id, value)
+                            }
+                            options={Object.entries(priorityConfig).map(
+                              ([key, config]) => ({
+                                value: key,
+                                label: config.label,
+                              }),
                             )}
-                          >
-                            <StatusIcon className="w-3 h-3" />
-                            <span>{status.label}</span>
+                            className="w-full"
+                            triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div className="flex items-center space-x-2 text-sm text-gray-400">
+                          <Calendar className="w-4 h-4" />
+                          <span>
+                            {new Date(ticket.createdAt).toLocaleDateString()}
                           </span>
                         </div>
                       </div>
 
-                      {(user.role === "USER" ||
-                        user.role === "SUPER_ADMIN") && (
-                        <div className="flex shrink-0 items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              goToTicket(ticket.id);
-                            }}
-                            className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-white/10 dark:hover:text-brand-400"
-                            title="View ticket details"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteTicket(ticket.id);
-                            }}
-                            className="rounded-md p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                            title="Delete ticket"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Details */}
-                    <div className="space-y-3">
-                      {/* Project */}
-
-                      <div className="w-full">
+                      {/* Actions */}
+                      <div className="mt-2 space-y-2 dark:border-gray-800/50">
                         <SelectMenu
-                          value={ticket.assignee?.id ?? "__unassigned__"}
+                          value={ticket.status}
                           onChange={(value) =>
-                            handleAssigneeChange(ticket.id, value)
+                            handleStatusChange(ticket.id, value)
                           }
-                          options={[
-                            {
-                              value: "__unassigned__",
-                              label: "Assignee: Unassigned",
-                            },
-                            ...assignableUsers.map((member) => ({
-                              value: member.id,
-                              label: `${member.name}`,
-                            })),
-                          ]}
-                          className="w-full"
-                          triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
-                        />
-                      </div>
-
-                      <div className="flex items-center space-x-2 text-sm text-gray-400">
-                        <ListTodo className="w-4 h-4" />
-                        <span>{ticket.project?.name || "No project"}</span>
-                      </div>
-
-                      <div className="flex items-center space-x-2 text-sm text-gray-400">
-                        <User className="w-4 h-4" />
-                        <span>{ticket.assignee?.name || "Unassigned"}</span>
-                      </div>
-
-                      <div className="w-full">
-                        <SelectMenu
-                          value={ticket.priority ?? "NONE"}
-                          onChange={(value) =>
-                            handlePriorityChange(ticket.id, value)
-                          }
-                          options={Object.entries(priorityConfig).map(
+                          options={Object.entries(statusConfig).map(
                             ([key, config]) => ({
                               value: key,
                               label: config.label,
@@ -900,188 +1027,163 @@ export default function TicketsPage() {
                           triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
                         />
                       </div>
-
-                      <div className="flex items-center space-x-2 text-sm text-gray-400">
-                        <Calendar className="w-4 h-4" />
-                        <span>
-                          {new Date(ticket.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
                     </div>
+                  );
+                })}
+              </div>
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            </>
+          )}
 
-                    {/* Actions */}
-                    <div className="mt-2 space-y-2 dark:border-gray-800/50">
-                      <SelectMenu
-                        value={ticket.status}
-                        onChange={(value) =>
-                          handleStatusChange(ticket.id, value)
-                        }
-                        options={Object.entries(statusConfig).map(
-                          ([key, config]) => ({
-                            value: key,
-                            label: config.label,
-                          }),
-                        )}
-                        className="w-full"
-                        triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-            />
-          </>
-        )}
-
-        <CreateTicketModal
-          isOpen={showCreateModal}
-          defaultTeamId={
-            user.role === "SUPER_ADMIN"
-              ? isAllTeams
-                ? ""
+          <CreateTicketModal
+            isOpen={showCreateModal}
+            defaultTeamId={
+              user.role === "SUPER_ADMIN"
+                ? isAllTeams
+                  ? ""
+                  : activeTeamId
                 : activeTeamId
-              : activeTeamId
-          }
-          teams={teams}
-        />
-        {showImportModal && user.role === "SUPER_ADMIN" && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setShowImportModal(false)}
-            />
-            <div className="relative w-full max-w-4xl rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-800 dark:bg-[#111217]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    Import Tasks As Tickets
-                  </h2>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Paste a JSON array, validate, then import.
-                  </p>
+            }
+            teams={teams}
+          />
+          {showImportModal && user.role === "SUPER_ADMIN" && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+                onClick={() => setShowImportModal(false)}
+              />
+              <div className="relative w-full max-w-4xl rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-800 dark:bg-[#111217]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      Import Tasks As Tickets
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      Paste a JSON array, validate, then import.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowImportModal(false)}
+                    className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                  >
+                    Close
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowImportModal(false)}
-                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
-                >
-                  Close
-                </button>
-              </div>
 
-              <div className="mt-4">
-                <textarea
-                  value={importPayload}
-                  onChange={(e) => setImportPayload(e.target.value)}
-                  className="h-64 w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-100"
-                />
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={loadSampleImportPayload}
-                  disabled={importBusy}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
-                >
-                  Load Sample
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void executeImport(true);
-                  }}
-                  disabled={importBusy}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
-                >
-                  Validate
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void executeImport(false);
-                  }}
-                  disabled={importBusy}
-                  className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {importBusy ? "Working..." : "Import Tickets"}
-                </button>
-              </div>
-
-              {importError && (
-                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                  {importError}
+                <div className="mt-4">
+                  <textarea
+                    value={importPayload}
+                    onChange={(e) => setImportPayload(e.target.value)}
+                    className="h-64 w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-100"
+                  />
                 </div>
-              )}
 
-              {importSummary && (
-                <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-200">
-                  total: {importSummary.total} · created:{" "}
-                  {importSummary.created} · validated: {importSummary.validated}{" "}
-                  · failed: {importSummary.failed} · mode:{" "}
-                  {importSummary.dryRun ? "validate" : "import"}
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={loadSampleImportPayload}
+                    disabled={importBusy}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                  >
+                    Load Sample
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void executeImport(true);
+                    }}
+                    disabled={importBusy}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                  >
+                    Validate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void executeImport(false);
+                    }}
+                    disabled={importBusy}
+                    className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {importBusy ? "Working..." : "Import Tickets"}
+                  </button>
                 </div>
-              )}
 
-              {importRows.length > 0 && (
-                <div className="mt-4 max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-900/60">
-                      <tr>
-                        <th className="px-3 py-2">#</th>
-                        <th className="px-3 py-2">Title</th>
-                        <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Message</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importRows.map((row) => (
-                        <tr
-                          key={`${row.index}-${row.title}`}
-                          className="border-t border-gray-200 dark:border-gray-800"
-                        >
-                          <td className="px-3 py-2">{row.index + 1}</td>
-                          <td className="px-3 py-2">{row.title}</td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={cn(
-                                "rounded-full px-2 py-0.5 text-xs font-medium",
-                                row.status === "error"
-                                  ? "bg-red-100 text-red-700"
-                                  : row.status === "created"
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-blue-100 text-blue-700",
-                              )}
-                            >
-                              {row.status}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">{row.message}</td>
+                {importError && (
+                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    {importError}
+                  </div>
+                )}
+
+                {importSummary && (
+                  <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-200">
+                    total: {importSummary.total} · created:{" "}
+                    {importSummary.created} · validated:{" "}
+                    {importSummary.validated} · failed: {importSummary.failed} ·
+                    mode: {importSummary.dryRun ? "validate" : "import"}
+                  </div>
+                )}
+
+                {importRows.length > 0 && (
+                  <div className="mt-4 max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-gray-50 dark:bg-gray-900/60">
+                        <tr>
+                          <th className="px-3 py-2">#</th>
+                          <th className="px-3 py-2">Title</th>
+                          <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2">Message</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody>
+                        {importRows.map((row) => (
+                          <tr
+                            key={`${row.index}-${row.title}`}
+                            className="border-t border-gray-200 dark:border-gray-800"
+                          >
+                            <td className="px-3 py-2">{row.index + 1}</td>
+                            <td className="px-3 py-2">{row.title}</td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={cn(
+                                  "rounded-full px-2 py-0.5 text-xs font-medium",
+                                  row.status === "error"
+                                    ? "bg-red-100 text-red-700"
+                                    : row.status === "created"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : "bg-blue-100 text-blue-700",
+                                )}
+                              >
+                                {row.status}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">{row.message}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-        <ConfirmDialog
-          isOpen={pendingDeleteTicketId !== null}
-          title="Delete ticket"
-          message="Are you sure you want to delete this ticket?"
-          confirmLabel="Delete"
-          onCancel={() => setPendingDeleteTicketId(null)}
-          onConfirm={() => {
-            void confirmDeleteTicket();
-          }}
-        />
-      </div>
-    </DashboardLayout>
+          )}
+          <ConfirmDialog
+            isOpen={pendingDeleteTicketId !== null}
+            title="Delete ticket"
+            message="Are you sure you want to delete this ticket?"
+            confirmLabel="Delete"
+            onCancel={() => setPendingDeleteTicketId(null)}
+            onConfirm={() => {
+              void confirmDeleteTicket();
+            }}
+          />
+        </div>
+      </DashboardLayout>
+    </IconContext.Provider>
   );
 }

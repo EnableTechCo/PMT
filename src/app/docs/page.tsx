@@ -1,63 +1,168 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
-import { FileText, Plus, Clock, User, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  ChevronRight,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
-interface Document {
+type AuthoredDoc = {
   id: string;
+  kind: "authored-doc";
   title: string;
+  contentHtml: string;
   createdAt: string;
   updatedAt: string;
   author: { id: string; name: string } | null;
   team: { id: string; name: string } | null;
   project?: { id: string; name: string } | null;
+};
+
+type RepoReadme = {
+  id: string;
+  kind: "repo-readme";
+  title: string;
+  summary: string;
+  contentHtml: string;
+  owner: string;
+  repo: string;
+  url: string;
+  updatedAt: string | null;
+  project?: { id: string; name: string } | null;
+};
+
+type DocsLibraryResponse = {
+  authoredDocs: AuthoredDoc[];
+  repoReadmes: RepoReadme[];
+};
+
+type LibraryItem = AuthoredDoc | RepoReadme;
+
+function itemSearchText(item: LibraryItem) {
+  return [
+    item.title,
+    item.kind === "repo-readme" ? item.summary : item.author?.name,
+    item.project?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 export default function DocsPage() {
   const router = useRouter();
   const { activeTeamId, isAllTeams } = useTeam();
-  const [docs, setDocs] = useState<Document[]>([]);
+  const [authoredDocs, setAuthoredDocs] = useState<AuthoredDoc[]>([]);
+  const [repoReadmes, setRepoReadmes] = useState<RepoReadme[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState("");
   const [createDocError, setCreateDocError] = useState("");
   const [creatingDoc, setCreatingDoc] = useState(false);
 
-  const fetchDocs = useCallback(async () => {
+  const fetchDocsLibrary = useCallback(async () => {
     try {
       setLoading(true);
-      const url =
-        activeTeamId && !isAllTeams
-          ? `/api/docs?teamId=${activeTeamId}`
-          : `/api/docs`;
-      const res = await fetch(url);
-      if (res.ok) {
-        setDocs(await res.json());
+      const params = new URLSearchParams();
+      if (activeTeamId && !isAllTeams) {
+        params.set("teamId", activeTeamId);
       }
+
+      const response = await fetch(
+        `/api/docs/library${params.toString() ? `?${params}` : ""}`,
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load docs library");
+      }
+
+      const data = (await response.json()) as DocsLibraryResponse;
+      setAuthoredDocs(
+        Array.isArray(data.authoredDocs) ? data.authoredDocs : [],
+      );
+      setRepoReadmes(Array.isArray(data.repoReadmes) ? data.repoReadmes : []);
     } catch (error) {
       console.error(error);
+      setAuthoredDocs([]);
+      setRepoReadmes([]);
     } finally {
       setLoading(false);
     }
   }, [activeTeamId, isAllTeams]);
 
   useEffect(() => {
-    void fetchDocs();
-  }, [fetchDocs]);
+    void fetchDocsLibrary();
+  }, [fetchDocsLibrary]);
 
   useEffect(() => {
     const unsubscribe = onRealtimeChange((detail) => {
-      if (detail.table !== "Document") return;
-      void fetchDocs();
+      if (detail.table !== "Document" && detail.table !== "GithubRepo") return;
+      void fetchDocsLibrary();
     });
 
     return unsubscribe;
-  }, [fetchDocs]);
+  }, [fetchDocsLibrary]);
+
+  const filteredAuthoredDocs = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return authoredDocs;
+    return authoredDocs.filter((doc) => itemSearchText(doc).includes(query));
+  }, [authoredDocs, searchQuery]);
+
+  const filteredRepoReadmes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return repoReadmes;
+    return repoReadmes.filter((doc) => itemSearchText(doc).includes(query));
+  }, [repoReadmes, searchQuery]);
+
+  const visibleItems = useMemo(
+    () => [...filteredAuthoredDocs, ...filteredRepoReadmes],
+    [filteredAuthoredDocs, filteredRepoReadmes],
+  );
+
+  const pageSize = 8;
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / pageSize));
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, activeTeamId, isAllTeams]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    if (!visibleItems.length) {
+      setSelectedId("");
+      return;
+    }
+
+    if (!visibleItems.some((item) => item.id === selectedId)) {
+      setSelectedId(visibleItems[0].id);
+    }
+  }, [visibleItems, selectedId]);
+
+  const selectedItem =
+    visibleItems.find((item) => item.id === selectedId) ?? null;
+
+  const sidebarItemTitle = (item: LibraryItem) => {
+    if (item.kind === "repo-readme") {
+      return `${item.repo.replace(/\s+/g, "-").toLowerCase()}-README`;
+    }
+    return item.title;
+  };
 
   const createDoc = async () => {
     const title = newDocTitle.trim();
@@ -80,126 +185,149 @@ export default function DocsPage() {
       const res = await fetch("/api/docs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content: "# " + title, teamId }),
+        body: JSON.stringify({ title, content: `<h1>${title}</h1>`, teamId }),
       });
-      if (res.ok) {
-        const newDoc = await res.json();
-        setShowCreateModal(false);
-        setNewDocTitle("");
-        router.push(`/docs/${newDoc.id}`);
-        return;
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "Failed to create document.",
+        );
       }
 
-      const body = await res.json().catch(() => ({}));
+      const newDoc = await res.json();
+      setShowCreateModal(false);
+      setNewDocTitle("");
+      router.push(`/docs/${newDoc.id}`);
+    } catch (error) {
       setCreateDocError(
-        typeof body.error === "string"
-          ? body.error
-          : "Failed to create document.",
+        error instanceof Error ? error.message : "Failed to create document.",
       );
-    } catch (e) {
-      console.error(e);
-      setCreateDocError("Failed to create document.");
     } finally {
       setCreatingDoc(false);
     }
   };
 
-  const filteredDocs = docs.filter((d) =>
-    d.title.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
-
   return (
     <DashboardLayout>
-      <div className="w-full space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Team Docs
-            </h1>
-            <p className="text-gray-500 mt-1">
-              Internal knowledge base, specifications, and notes
-            </p>
-          </div>
-
-          <button
-            onClick={() => {
-              setCreateDocError("");
-              setShowCreateModal(true);
-            }}
-            className="btn-primary shrink-0 self-start sm:self-auto"
-          >
-            <Plus className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="relative max-w-md">
-          <input
-            type="text"
-            placeholder="Search documents..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 input-modern"
-          />
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-40 bg-gray-100 dark:bg-gray-800 rounded-xl"
-              ></div>
-            ))}
-          </div>
-        ) : filteredDocs.length === 0 ? (
-          <div className="text-center py-20 bg-white dark:bg-[#1c1c24] rounded-xl border border-gray-200 dark:border-gray-800">
-            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">
-              No documents found
-            </h3>
-            <p className="text-gray-500">
-              Create a new document to start building your knowledge base.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredDocs.map((doc) => (
+      <div className="w-full min-h-[calc(100vh-7rem)] overflow-hidden border border-[#d0d7de] bg-[#f6f8fa] text-[#24292f]">
+        <header className="border-b border-[#d0d7de] bg-white px-5 py-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative min-w-[280px] flex-1 sm:flex-none sm:w-[360px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8c959f]" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search articles"
+                  className="w-full border border-[#d0d7de] bg-white py-2.5 pl-10 pr-4 text-sm text-[#24292f] outline-none transition focus:border-[#1f6feb]"
+                />
+              </div>
               <button
-                key={doc.id}
-                onClick={() => router.push(`/docs/${doc.id}`)}
-                className="flex flex-col p-5 bg-white dark:bg-[#1c1c24] border border-gray-200 dark:border-gray-800 rounded-xl hover:shadow-md hover:border-brand-500/30 transition-all text-left group"
+                type="button"
+                onClick={() => {
+                  setCreateDocError("");
+                  setShowCreateModal(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1a7f37]"
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="p-2.5 bg-brand-50 dark:bg-brand-500/10 rounded-lg text-brand-600 dark:text-brand-400">
-                    <FileText className="w-6 h-6" />
-                  </div>
-                </div>
-
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1 group-hover:text-brand-600 transition-colors line-clamp-2">
-                  {doc.title}
-                </h3>
-
-                <div className="mt-auto pt-4 flex flex-col gap-2 text-xs text-gray-500">
-                  <div className="flex items-center gap-2">
-                    <User className="w-3.5 h-3.5" />
-                    <span>{doc.author?.name ?? "Unknown author"}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>
-                      Updated {new Date(doc.updatedAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                  {doc.project && (
-                    <div className="inline-flex items-center self-start mt-1 px-2 py-1 rounded text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                      Project: {doc.project.name}
-                    </div>
-                  )}
-                </div>
+                <Plus className="h-4 w-4" />
+                New article
               </button>
-            ))}
+            </div>
           </div>
-        )}
+        </header>
+
+        <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-6 px-5 py-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="hidden xl:block">
+            <div className="sticky top-6 border border-[#d0d7de] bg-white">
+              <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-2 py-2">
+                <details
+                  open
+                  className="group border-b border-[#d8dee4] px-2 py-1 last:border-b-0"
+                >
+                  <summary className="cursor-pointer list-none py-1.5 text-md text-[#24292f] font-bold">
+                    Docs
+                  </summary>
+                  <div className="pb-2">
+                    {visibleItems.length ? (
+                      visibleItems.map((item) => (
+                        <button
+                          key={`nav-item-${item.id}`}
+                          type="button"
+                          onClick={() => setSelectedId(item.id)}
+                          className={`mt-1 flex w-full items-center gap-2 border-l-2 px-2 py-1.5 text-left text-sm font-medium ${
+                            selectedId === item.id
+                              ? "border-brand-600 text-brand-600"
+                              : "border-transparent text-[#57606a] hover:text-[#24292f]"
+                          }`}
+                          title={sidebarItemTitle(item)}
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            {sidebarItemTitle(item)}
+                          </span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-current opacity-70" />
+                        </button>
+                      ))
+                    ) : (
+                      <p className="mt-1 px-2 py-1 text-xs text-[#57606a]">
+                        No docs found.
+                      </p>
+                    )}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </aside>
+
+          <main className="space-y-6">
+            {!loading && selectedItem ? (
+              <article className="border border-[#d0d7de] bg-white p-6 sm:p-8">
+                <div className="mb-6 flex flex-col gap-4 border-b border-[#d0d7de] pb-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="mt-2 text-2xl font-semibold text-[#24292f]">
+                      {selectedItem.title}
+                    </h3>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {selectedItem.kind === "authored-doc" ? (
+                      <Link
+                        href={`/docs/${selectedItem.id}`}
+                        className="inline-flex items-center gap-2 border border-[#d0d7de] bg-white px-3 py-2 text-sm font-medium text-[#24292f] hover:bg-[#f6f8fa]"
+                      >
+                        Edit article
+                        <ArrowUpRight className="h-4 w-4" />
+                      </Link>
+                    ) : (
+                      <a
+                        href={selectedItem.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 border border-[#d0d7de] bg-white px-3 py-2 text-sm font-medium text-[#24292f] hover:bg-[#f6f8fa]"
+                      >
+                        Open repository
+                        <ArrowUpRight className="h-4 w-4" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className="docs-prose max-w-none text-[15px] leading-7 text-[#24292f]"
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      selectedItem.contentHtml ||
+                      "<p>No content available.</p>",
+                  }}
+                />
+              </article>
+            ) : null}
+          </main>
+        </div>
       </div>
 
       {showCreateModal ? (
@@ -215,7 +343,7 @@ export default function DocsPage() {
           <div className="relative w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-[#1c1c24]">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                New Document
+                New document
               </h2>
               <button
                 type="button"

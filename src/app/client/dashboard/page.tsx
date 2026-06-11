@@ -45,8 +45,16 @@ const statusConfig: Record<string, { label: string; color: string }> = {
     label: "In Progress",
     color: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   },
+  IN_REVIEW: {
+    label: "In Review",
+    color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  },
+  QA: {
+    label: "QA",
+    color: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  },
   REVISIONS: {
-    label: "REVIEW",
+    label: "Revisions",
     color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   },
   COMPLETE: {

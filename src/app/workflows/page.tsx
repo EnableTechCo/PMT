@@ -80,8 +80,14 @@ export default function WorkflowsPage() {
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [opsBusy, setOpsBusy] = useState(false);
+  const [selectorInput, setSelectorInput] = useState("");
+  const [assignOwner, setAssignOwner] = useState("");
+  const [assignRepo, setAssignRepo] = useState("");
+  const [assignPrNumber, setAssignPrNumber] = useState("");
   const canManageWorkflows =
     user?.role === "USER" || user?.role === "SUPER_ADMIN";
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
   const runByWorkflow = useMemo(() => {
     const map = new Map<number, GithubRun[]>();
@@ -241,6 +247,86 @@ export default function WorkflowsPage() {
     }
   };
 
+  const runSelectorBackfill = async () => {
+    setOpsBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/tickets/selector-ids/backfill", {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(body.error || "Failed to backfill selector IDs");
+      }
+
+      setMessage(
+        `Selector ID backfill complete: ${body.updated ?? 0} updated out of ${body.total ?? 0} tickets.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to backfill selector IDs",
+      );
+    } finally {
+      setOpsBusy(false);
+    }
+  };
+
+  const assignExistingPr = async () => {
+    const parsedSelector = Number.parseInt(selectorInput, 10);
+    const parsedPrNumber = Number.parseInt(assignPrNumber, 10);
+
+    if (!Number.isFinite(parsedSelector) || parsedSelector <= 0) {
+      setError("Selector ID must be a valid positive number.");
+      return;
+    }
+
+    if (!assignOwner.trim() || !assignRepo.trim()) {
+      setError("Owner and repo are required.");
+      return;
+    }
+
+    if (!Number.isFinite(parsedPrNumber) || parsedPrNumber <= 0) {
+      setError("PR number must be a valid positive number.");
+      return;
+    }
+
+    setOpsBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/github/pull-requests/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          owner: assignOwner.trim(),
+          repo: assignRepo.trim(),
+          number: parsedPrNumber,
+          selectorId: parsedSelector,
+        }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.error || "Failed to assign PR to ticket");
+      }
+
+      setMessage(
+        `PR #${parsedPrNumber} linked to ticket selector #${parsedSelector}.`,
+      );
+      setAssignPrNumber("");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to assign PR to ticket",
+      );
+    } finally {
+      setOpsBusy(false);
+    }
+  };
+
   if (authLoading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -272,6 +358,85 @@ export default function WorkflowsPage() {
         </div>
 
         <MonitoringTabs />
+
+        {isSuperAdmin ? (
+          <div className="grid gap-4 border border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20 lg:grid-cols-2">
+            <div className="space-y-3">
+              <div>
+                <h2 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                  Ticket selector operations
+                </h2>
+                <p className="mt-1 text-xs text-indigo-800/90 dark:text-indigo-300/90">
+                  One-time operation to assign selector IDs to all existing
+                  tickets.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void runSelectorBackfill();
+                }}
+                disabled={opsBusy}
+                className="inline-flex items-center gap-2 border border-indigo-300 bg-white px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50"
+              >
+                {opsBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Backfill selector IDs
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <h2 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                  Link existing PR to ticket
+                </h2>
+                <p className="mt-1 text-xs text-indigo-800/90 dark:text-indigo-300/90">
+                  Use selector ID + repo + PR number to connect legacy PRs.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input
+                  value={selectorInput}
+                  onChange={(event) => setSelectorInput(event.target.value)}
+                  placeholder="Selector ID (e.g. 10110)"
+                  className="border border-gray-300 bg-white px-3 py-2 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                />
+                <input
+                  value={assignPrNumber}
+                  onChange={(event) => setAssignPrNumber(event.target.value)}
+                  placeholder="PR number"
+                  className="border border-gray-300 bg-white px-3 py-2 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                />
+                <input
+                  value={assignOwner}
+                  onChange={(event) => setAssignOwner(event.target.value)}
+                  placeholder="Owner"
+                  className="border border-gray-300 bg-white px-3 py-2 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                />
+                <input
+                  value={assignRepo}
+                  onChange={(event) => setAssignRepo(event.target.value)}
+                  placeholder="Repo"
+                  className="border border-gray-300 bg-white px-3 py-2 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void assignExistingPr();
+                }}
+                disabled={opsBusy}
+                className="inline-flex items-center gap-2 border border-indigo-300 bg-white px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50"
+              >
+                {opsBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Link existing PR
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="grid gap-4 border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 md:grid-cols-4">
           <div>

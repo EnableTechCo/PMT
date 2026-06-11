@@ -121,9 +121,9 @@ export default function DocEditorPage({
               disabled={
                 saving || (title === doc.title && content === doc.content)
               }
-              className="btn-primary"
+              className="inline-flex min-w-[150px] items-center justify-center whitespace-nowrap rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Save className="w-4 h-4 mr-2" />
+              <Save className="mr-2 h-4 w-4" />
               {saving ? "Saving..." : "Save"}
             </button>
           </div>

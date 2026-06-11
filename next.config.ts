@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  experimental: {
+    optimizePackageImports: ["@phosphor-icons/react"],
+  },
   outputFileTracingRoot: process.cwd(),
 };
 

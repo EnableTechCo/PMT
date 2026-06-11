@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Role } from "@/lib/db-types";
+import { Octokit } from "octokit";
+import { Role, TicketStatus } from "@/lib/db-types";
 import { db } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import {
@@ -9,12 +10,23 @@ import {
 } from "@/lib/access";
 import { writeAuditLog } from "@/lib/audit";
 import { createNotification, logTicketActivity } from "@/lib/ticketActivity";
+import { getSharedGithubToken } from "@/lib/github";
+import { parseSelectorIdFromBranch } from "@/lib/ticket-selector";
 
 const ticketInclude = {
   creator: { select: { id: true, name: true, email: true } },
   assignee: { select: { id: true, name: true, email: true } },
   client: { select: { id: true, name: true, email: true } },
   team: { select: { id: true, name: true } },
+  sprint: {
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      startsAt: true,
+      endsAt: true,
+    },
+  },
   project: {
     select: {
       id: true,
@@ -82,10 +94,130 @@ async function attachProjectRepos(ticket: any) {
   };
 }
 
+function toSelectorId(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+async function syncTicketGithubPullRequests(ticket: any) {
+  const token = getSharedGithubToken();
+  if (!token) return { changed: false };
+
+  const projectId = ticket?.project?.id ?? ticket?.projectId;
+  const selectorId = toSelectorId(ticket?.selectorId);
+  if (!projectId || selectorId === null) return { changed: false };
+
+  const repos = await db.githubRepo.findMany({
+    where: { projectId },
+    select: { owner: true, name: true },
+  });
+  if (!repos.length) return { changed: false };
+
+  const octokit = new Octokit({ auth: token });
+  let linkedCount = 0;
+  let sawOpenPr = false;
+
+  for (const repo of repos as Array<{ owner: string; name: string }>) {
+    try {
+      const { data: pulls } = await octokit.rest.pulls.list({
+        owner: repo.owner,
+        repo: repo.name,
+        state: "open",
+        sort: "updated",
+        direction: "desc",
+        per_page: 50,
+      });
+
+      for (const pr of pulls) {
+        const branchRef = pr.head?.ref ?? "";
+        if (parseSelectorIdFromBranch(branchRef) !== selectorId) continue;
+
+        sawOpenPr = true;
+        await db.githubPullRequest.upsert({
+          where: {
+            ticketId_number: {
+              ticketId: ticket.id,
+              number: pr.number,
+            },
+          },
+          update: {
+            title: pr.title,
+            url: pr.html_url,
+            state: pr.state,
+          },
+          create: {
+            ticketId: ticket.id,
+            title: pr.title,
+            number: pr.number,
+            url: pr.html_url,
+            state: pr.state,
+          },
+        });
+
+        linkedCount += 1;
+      }
+    } catch (syncError) {
+      console.warn("Ticket PR fallback sync failed for repo", {
+        repo: `${repo.owner}/${repo.name}`,
+        error: syncError,
+      });
+    }
+  }
+
+  let statusChanged = false;
+  if (
+    sawOpenPr &&
+    ticket.status !== TicketStatus.IN_REVIEW &&
+    ticket.status !== TicketStatus.QA &&
+    ticket.status !== TicketStatus.COMPLETE
+  ) {
+    await db.ticket.update({
+      where: { id: ticket.id },
+      data: { status: TicketStatus.IN_REVIEW },
+    });
+
+    await logTicketActivity({
+      ticketId: ticket.id,
+      actorId: ticket.creatorId,
+      type: "STATUS_CHANGE",
+      summary: "Auto-moved to In Review from linked open PR",
+      metadata: {
+        source: "ticket_get_fallback_sync",
+        selectorId,
+      },
+    });
+
+    statusChanged = true;
+  }
+
+  return { changed: linkedCount > 0 || statusChanged };
+}
+
 async function hydrateTicketFallback(baseTicket: any) {
   if (!baseTicket) return null;
 
-  const [creator, assignee, client, team, project] = await Promise.all([
+  const [
+    creator,
+    assignee,
+    client,
+    team,
+    project,
+    sprint,
+    comments,
+    checklistItems,
+    attachments,
+    activities,
+    githubBranches,
+    githubPullRequests,
+  ] = await Promise.all([
     baseTicket.creatorId
       ? db.user.findUnique({
           where: { id: baseTicket.creatorId },
@@ -121,6 +253,43 @@ async function hydrateTicketFallback(baseTicket: any) {
           },
         })
       : Promise.resolve(null),
+    baseTicket.sprintId
+      ? db.sprint.findUnique({
+          where: { id: baseTicket.sprintId },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            startsAt: true,
+            endsAt: true,
+          },
+        })
+      : Promise.resolve(null),
+    db.ticketComment.findMany({
+      where: { ticketId: baseTicket.id },
+      orderBy: { createdAt: "asc" },
+    }),
+    db.ticketChecklistItem.findMany({
+      where: { ticketId: baseTicket.id },
+      orderBy: { sortOrder: "asc" },
+    }),
+    db.ticketAttachment.findMany({
+      where: { ticketId: baseTicket.id },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.ticketActivity.findMany({
+      where: { ticketId: baseTicket.id },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    }),
+    db.githubBranch.findMany({
+      where: { ticketId: baseTicket.id },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.githubPullRequest.findMany({
+      where: { ticketId: baseTicket.id },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   let projectWithRepos = project;
@@ -141,13 +310,14 @@ async function hydrateTicketFallback(baseTicket: any) {
     assignee,
     client,
     team,
+    sprint,
     project: projectWithRepos,
-    comments: [],
-    checklistItems: [],
-    attachments: [],
-    activities: [],
-    githubBranches: [],
-    githubPullRequests: [],
+    comments,
+    checklistItems,
+    attachments,
+    activities,
+    githubBranches,
+    githubPullRequests,
   };
 }
 
@@ -204,7 +374,28 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    return NextResponse.json(await attachProjectRepos(ticket));
+    const ticketWithRepos = await attachProjectRepos(ticket);
+    const syncResult = await syncTicketGithubPullRequests(ticketWithRepos);
+
+    if (!syncResult.changed) {
+      return NextResponse.json(ticketWithRepos);
+    }
+
+    let refreshedTicket: any = null;
+    try {
+      refreshedTicket = await db.ticket.findUnique({
+        where: { id },
+        include: fullTicketInclude,
+      });
+    } catch (error) {
+      if (!isTicketRelationError(error)) throw error;
+      const baseTicket = await db.ticket.findUnique({ where: { id } });
+      refreshedTicket = await hydrateTicketFallback(baseTicket);
+    }
+
+    return NextResponse.json(
+      await attachProjectRepos(refreshedTicket ?? ticket),
+    );
   } catch (e) {
     console.error("GET ticket error:", e);
     return NextResponse.json(
@@ -220,6 +411,18 @@ const PRIORITY_SET = new Set<string>([
   "MEDIUM",
   "HIGH",
   "URGENT",
+]);
+
+const STATUS_SET = new Set<string>([
+  "BACKLOG",
+  "TODO",
+  "REFINE",
+  "IN_PROGRESS",
+  "IN_REVIEW",
+  "QA",
+  "REVISIONS",
+  "CLIENT_REVIEW",
+  "COMPLETE",
 ]);
 
 function parseOptionalDate(v: unknown): Date | null | undefined {
@@ -305,15 +508,7 @@ export async function PATCH(
       }
       if (
         typeof updates.status === "string" &&
-        [
-          "BACKLOG",
-          "TODO",
-          "REFINE",
-          "IN_PROGRESS",
-          "REVISIONS",
-          "CLIENT_REVIEW",
-          "COMPLETE",
-        ].includes(updates.status)
+        STATUS_SET.has(updates.status)
       ) {
         allowed.status = updates.status;
       }
@@ -352,6 +547,30 @@ export async function PATCH(
       }
       if (updates.projectId === null) {
         allowed.projectId = null;
+      }
+
+      if (updates.sprintId === null || updates.sprintId === "") {
+        allowed.sprintId = null;
+      } else if (typeof updates.sprintId === "string") {
+        const sprint = await db.sprint.findUnique({
+          where: { id: updates.sprintId },
+          select: { id: true, teamId: true, startsAt: true, endsAt: true },
+        });
+        if (!sprint) {
+          return NextResponse.json(
+            { error: "Sprint not found" },
+            { status: 400 },
+          );
+        }
+        if (ticket.teamId && sprint.teamId !== ticket.teamId) {
+          return NextResponse.json(
+            { error: "Sprint must belong to the ticket team" },
+            { status: 400 },
+          );
+        }
+        allowed.sprintId = sprint.id;
+        allowed.startDate = new Date(sprint.startsAt);
+        allowed.dueDate = new Date(sprint.endsAt);
       }
 
       updates = allowed;
@@ -484,6 +703,18 @@ export async function PATCH(
           actorId: user.id,
           type: "FIELD",
           summary: "Acceptance criteria updated",
+        });
+      }
+      if ("sprintId" in updates && updates.sprintId !== prev.sprintId) {
+        await logTicketActivity({
+          ticketId: id,
+          actorId: user.id,
+          type: "FIELD",
+          summary:
+            updates.sprintId == null
+              ? "Moved to backlog"
+              : "Sprint assignment updated",
+          metadata: { from: prev.sprintId, to: updates.sprintId },
         });
       }
     }

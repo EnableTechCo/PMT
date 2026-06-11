@@ -11,7 +11,6 @@ import {
   Ticket,
   Users2,
   Search,
-  Plus,
   LogOut,
   Menu,
   X,
@@ -101,8 +100,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
               { name: "Executive", href: "/executive", icon: BarChart3 },
               { name: "Clients", href: "/clients", icon: Handshake },
-              { name: "Feedback", href: "/feedback", icon: Bell },
+              // { name: "Feedback", href: "/feedback", icon: Bell },
               { name: "Workload", href: "/workload", icon: Briefcase },
+              { name: "Sprints", href: "/sprints", icon: Ticket },
               { name: "Tickets", href: "/tickets", icon: Ticket },
               { name: "Docs", href: "/docs", icon: FileText },
               { name: "Projects", href: "/projects", icon: FolderKanban },
@@ -112,31 +112,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           : [
               { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
               { name: "Clients", href: "/clients", icon: Handshake },
-              { name: "Feedback", href: "/feedback", icon: Bell },
+              // { name: "Feedback", href: "/feedback", icon: Bell },
               { name: "Workload", href: "/workload", icon: Briefcase },
+              { name: "Sprints", href: "/sprints", icon: Ticket },
               { name: "Tickets", href: "/tickets", icon: Ticket },
               { name: "Docs", href: "/docs", icon: FileText },
               { name: "Projects", href: "/projects", icon: FolderKanban },
             ],
     [user?.role],
   );
-  const quickActions =
-    user?.role === "CLIENT"
-      ? [
-          {
-            name: "Dashboard",
-            href: "/client/dashboard",
-            icon: LayoutDashboard,
-          },
-        ]
-      : [
-          { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-          { name: "Tickets", href: "/tickets", icon: Ticket },
-          { name: "Feedback", href: "/feedback", icon: Bell },
-          { name: "Workload", href: "/workload", icon: Briefcase },
-          { name: "Projects", href: "/projects", icon: FolderKanban },
-        ];
-
   const pathname = usePathname();
 
   const isNavActive = useCallback(
@@ -425,7 +409,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               );
             })}
 
-            {user?.role !== "SUPER_ADMIN" && !isClient ? (
+            {user?.role === "SUPER_ADMIN" && !isClient ? (
               <div className="pt-1">
                 <button
                   type="button"
@@ -681,7 +665,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               );
             })}
 
-            {user?.role !== "SUPER_ADMIN" && !isClient ? (
+            {user?.role === "SUPER_ADMIN" && !isClient ? (
               <div className="pt-1">
                 <button
                   type="button"
@@ -982,45 +966,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   ) : null}
                 </div>
               ) : null}
-
-              {/* Quick Actions */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNotifOpen(false);
-                    setShowUserMenu(false);
-                    setShowQuickActions(!showQuickActions);
-                  }}
-                  className="rounded-md bg-brand-600 p-2 text-white shadow-sm transition-colors hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950"
-                  title="Quick actions"
-                >
-                  <Plus className="h-5 w-5" />
-                </button>
-
-                {showQuickActions && (
-                  <div className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-lg border border-[var(--border)] bg-white shadow-card dark:border-gray-700 dark:bg-[#1c1c24]">
-                    <div className="p-2">
-                      <h3 className="mb-1 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                        Quick actions
-                      </h3>
-                      <div className="space-y-0.5">
-                        {quickActions.map((action) => (
-                          <Link
-                            key={action.name}
-                            href={action.href}
-                            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/5"
-                            onClick={() => setShowQuickActions(false)}
-                          >
-                            <action.icon className="h-4 w-4 text-gray-500" />
-                            <span className="font-medium">{action.name}</span>
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {/* User Menu (Desktop) */}
               <div className="hidden lg:flex items-center space-x-4">

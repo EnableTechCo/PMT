@@ -1,6 +1,26 @@
 import { createSupabaseAdminClient } from "./supabase";
 
-const supabase = createSupabaseAdminClient();
+let supabaseAdminClient: ReturnType<typeof createSupabaseAdminClient> | null =
+  null;
+
+function getSupabaseAdminClient() {
+  if (!supabaseAdminClient) {
+    supabaseAdminClient = createSupabaseAdminClient();
+  }
+
+  return supabaseAdminClient;
+}
+
+const supabase = new Proxy({} as ReturnType<typeof createSupabaseAdminClient>, {
+  get(_target, property) {
+    const client = getSupabaseAdminClient() as unknown as Record<
+      string,
+      unknown
+    >;
+    const value = client[property as keyof typeof client];
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
 
 type AnyObject = Record<string, unknown>;
 type QueryResponse = { data: unknown; error: unknown; count?: number | null };
@@ -203,11 +223,15 @@ function applyDirectFilters(
         value.hasOwnProperty("not") &&
         (value.not === null || typeof value.not !== "object")
       ) {
-        currentQuery = currentQuery.not(
-          field,
-          "eq",
-          normalizeFilterValue(value.not as unknown),
-        );
+        if (value.not === null) {
+          currentQuery = currentQuery.not(field, "is", null);
+        } else {
+          currentQuery = currentQuery.not(
+            field,
+            "eq",
+            normalizeFilterValue(value.not as unknown),
+          );
+        }
       }
       if (value.hasOwnProperty("contains")) {
         currentQuery = currentQuery.ilike(field, `%${String(value.contains)}%`);
@@ -600,14 +624,12 @@ const db = new Proxy(
           );
           const selectExpression = selection.select || "*";
 
-          let query: SupabaseQuery = supabase
+          const query: SupabaseQuery = supabase
             .from(table)
             .update(updateData as AnyObject)
-            .match(where || {});
-          if (selectExpression !== "*") {
-            query = query.select(selectExpression);
-          }
-          query = query.single();
+            .match(where || {})
+            .select(selectExpression)
+            .single();
 
           const response = (await query) as QueryResponse;
           const { data, error } = response;
@@ -760,16 +782,21 @@ const db = new Proxy(
                 .flatMap((item) => Object.keys(item))
             : [];
 
+          const upsertPayload: AnyObject = {
+            ...((isPlainObject(createData) ? createData : {}) as AnyObject),
+            ...((isPlainObject(updateData) ? updateData : {}) as AnyObject),
+          };
+
+          const onConflict =
+            conflictKeys.length > 0
+              ? Array.from(new Set(conflictKeys)).join(",")
+              : undefined;
+
           let query: SupabaseQuery = supabase
             .from(table)
-            .upsert(createData as AnyObject, {
-              onConflict:
-                conflictKeys.length > 0 ? String(conflictKeys[0]) : undefined,
+            .upsert(upsertPayload, {
+              onConflict,
             });
-
-          if (updateData) {
-            query = query.update(updateData as AnyObject);
-          }
 
           if (selectExpression !== "*") {
             query = query.select(selectExpression);

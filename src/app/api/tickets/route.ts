@@ -11,6 +11,15 @@ import {
 } from "@/lib/access";
 import { writeAuditLog } from "@/lib/audit";
 import { createNotification, logTicketActivity } from "@/lib/ticketActivity";
+import {
+  backfillTicketSelectorIds,
+  getNextTicketSelectorId,
+} from "@/lib/ticket-selector";
+import {
+  backfillTicketWorkTypes,
+  buildTicketBranchName,
+  normalizeWorkType,
+} from "@/lib/ticket-branching";
 
 /** Matches `enum TicketPriority` in schema; avoid `Object.values(TicketPriority)` when the client bundle omits the runtime enum. */
 const PRIORITY_VALUES = new Set<string>([
@@ -26,6 +35,15 @@ const ticketInclude = {
   assignee: { select: { id: true, name: true, email: true } },
   client: { select: { id: true, name: true, email: true } },
   team: { select: { id: true, name: true } },
+  sprint: {
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      startsAt: true,
+      endsAt: true,
+    },
+  },
   project: {
     select: {
       id: true,
@@ -53,6 +71,7 @@ async function hydrateTickets(baseTickets: any[]) {
   const clientIds = new Set<string>();
   const teamIds = new Set<string>();
   const projectIds = new Set<string>();
+  const sprintIds = new Set<string>();
 
   for (const ticket of baseTickets) {
     if (ticket.creatorId) creatorIds.add(ticket.creatorId);
@@ -60,20 +79,15 @@ async function hydrateTickets(baseTickets: any[]) {
     if (ticket.clientId) clientIds.add(ticket.clientId);
     if (ticket.teamId) teamIds.add(ticket.teamId);
     if (ticket.projectId) projectIds.add(ticket.projectId);
+    if (ticket.sprintId) sprintIds.add(ticket.sprintId);
   }
 
   const userIds = Array.from(new Set([...creatorIds, ...assigneeIds]));
 
-  const [users, clients, teams, projects, githubRepos] = await Promise.all([
+  const [users, teams, projects, githubRepos, sprints] = await Promise.all([
     userIds.length
       ? db.user.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, name: true, email: true },
-        })
-      : Promise.resolve([]),
-    clientIds.size
-      ? db.client.findMany({
-          where: { id: { in: Array.from(clientIds) } },
           select: { id: true, name: true, email: true },
         })
       : Promise.resolve([]),
@@ -107,10 +121,23 @@ async function hydrateTickets(baseTickets: any[]) {
           },
         })
       : Promise.resolve([]),
+    sprintIds.size
+      ? db.sprint.findMany({
+          where: { id: { in: Array.from(sprintIds) } },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            startsAt: true,
+            endsAt: true,
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   const userById = new Map(users.map((u: any) => [u.id, u]));
   const teamById = new Map(teams.map((t: any) => [t.id, t]));
+  const sprintById = new Map((sprints as any[]).map((s) => [s.id, s]));
   const projectClientIds = new Set<string>();
   for (const project of projects as any[]) {
     if (project.clientId) projectClientIds.add(project.clientId);
@@ -163,6 +190,7 @@ async function hydrateTickets(baseTickets: any[]) {
       : null,
     client: ticket.clientId ? (clientById.get(ticket.clientId) ?? null) : null,
     team: ticket.teamId ? (teamById.get(ticket.teamId) ?? null) : null,
+    sprint: ticket.sprintId ? (sprintById.get(ticket.sprintId) ?? null) : null,
     project: ticket.projectId
       ? (() => {
           const project = projectById.get(ticket.projectId);
@@ -194,6 +222,8 @@ export async function GET(request: NextRequest) {
     const teamIdParam = searchParams.get("teamId");
     const projectId = searchParams.get("projectId");
     const assigneeId = searchParams.get("assigneeId");
+    const sprintIdParam = searchParams.get("sprintId");
+    const backlogOnly = searchParams.get("backlogOnly") === "1";
     const myWorkload = searchParams.get("myWorkload") === "1";
     const priorityParam = searchParams.get("priority");
 
@@ -211,6 +241,14 @@ export async function GET(request: NextRequest) {
     }
     if (projectId) {
       where.projectId = projectId;
+    }
+    if (backlogOnly) {
+      where.sprintId = null;
+    } else if (sprintIdParam) {
+      where.sprintId =
+        sprintIdParam === "backlog" || sprintIdParam === "null"
+          ? null
+          : sprintIdParam;
     }
 
     if (user.role === Role.CLIENT) {
@@ -253,20 +291,51 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let tickets: any[];
-    try {
-      tickets = await db.ticket.findMany({
-        where,
-        include: ticketInclude,
-        orderBy: { createdAt: "desc" },
-      });
-    } catch (error) {
-      if (!isTicketRelationError(error)) throw error;
-      const baseTickets = await db.ticket.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-      });
-      tickets = await hydrateTickets(baseTickets);
+    const loadTickets = async () => {
+      try {
+        return await db.ticket.findMany({
+          where,
+          include: ticketInclude,
+          orderBy: { createdAt: "desc" },
+        });
+      } catch (error) {
+        if (!isTicketRelationError(error)) throw error;
+        const baseTickets = await db.ticket.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+        });
+        return hydrateTickets(baseTickets);
+      }
+    };
+
+    let tickets = await loadTickets();
+
+    const hasMissingSelectorIds = tickets.some(
+      (ticket: { selectorId?: unknown }) => ticket.selectorId == null,
+    );
+
+    const hasMissingWorkTypes = tickets.some(
+      (ticket: { workType?: unknown }) =>
+        typeof ticket.workType !== "string" ||
+        ticket.workType.trim().length === 0,
+    );
+
+    if (hasMissingSelectorIds && user.role !== Role.CLIENT) {
+      try {
+        await backfillTicketSelectorIds();
+        tickets = await loadTickets();
+      } catch (backfillError) {
+        console.warn("Ticket selector backfill skipped:", backfillError);
+      }
+    }
+
+    if (hasMissingWorkTypes && user.role !== Role.CLIENT) {
+      try {
+        await backfillTicketWorkTypes();
+        tickets = await loadTickets();
+      } catch (backfillError) {
+        console.warn("Ticket work type backfill skipped:", backfillError);
+      }
     }
 
     return NextResponse.json(tickets);
@@ -297,11 +366,26 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const title = typeof body.title === "string" ? body.title.trim() : "";
-    const status = body.status ?? "BACKLOG";
+    const statusIn =
+      typeof body.status === "string" ? body.status : TicketStatus.BACKLOG;
+    if (!(Object.values(TicketStatus) as string[]).includes(statusIn)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+    const status = statusIn;
     const clientIdIn = body.clientId ?? null;
     const teamIdIn = typeof body.teamId === "string" ? body.teamId : null;
     const projectIdIn =
-      typeof body.projectId === "string" ? body.projectId : null;
+      body.projectId === null || body.projectId === ""
+        ? null
+        : typeof body.projectId === "string"
+          ? body.projectId
+          : null;
+    const sprintIdIn =
+      body.sprintId === null || body.sprintId === ""
+        ? null
+        : typeof body.sprintId === "string"
+          ? body.sprintId
+          : undefined;
     const assigneeIdIn =
       typeof body.assigneeId === "string" ? body.assigneeId : null;
     const description =
@@ -312,6 +396,7 @@ export async function POST(request: NextRequest) {
       typeof body.acceptanceCriteria === "string"
         ? body.acceptanceCriteria.trim()
         : undefined;
+    const workType = normalizeWorkType(body.workType);
 
     let priority: TicketPriority = "MEDIUM";
     if (
@@ -372,6 +457,13 @@ export async function POST(request: NextRequest) {
       clientId: string | null;
     } | null = null;
 
+    let sprintForTicket: {
+      id: string;
+      teamId: string;
+      startsAt: string | Date;
+      endsAt: string | Date;
+    } | null = null;
+
     if (projectIdIn) {
       projectForTicket = await db.project.findUnique({
         where: { id: projectIdIn },
@@ -390,22 +482,43 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (!projectForTicket.clientId) {
+      if (projectForTicket.clientId) {
+        if (!finalClientId) {
+          finalClientId = projectForTicket.clientId;
+        }
+
+        if (finalClientId !== projectForTicket.clientId) {
+          return NextResponse.json(
+            {
+              error: "Selected project does not belong to the selected client",
+            },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
+    if (sprintIdIn !== undefined && sprintIdIn !== null) {
+      sprintForTicket = await db.sprint.findUnique({
+        where: { id: sprintIdIn },
+        select: {
+          id: true,
+          teamId: true,
+          startsAt: true,
+          endsAt: true,
+        },
+      });
+
+      if (!sprintForTicket) {
         return NextResponse.json(
-          { error: "Selected project is not attached to a client" },
+          { error: "Sprint not found" },
           { status: 400 },
         );
       }
 
-      if (!finalClientId) {
-        finalClientId = projectForTicket.clientId;
-      }
-
-      if (finalClientId !== projectForTicket.clientId) {
+      if (sprintForTicket.teamId !== teamIdIn) {
         return NextResponse.json(
-          {
-            error: "Selected project does not belong to the selected client",
-          },
+          { error: "Sprint must belong to the same team as the ticket" },
           { status: 400 },
         );
       }
@@ -432,20 +545,31 @@ export async function POST(request: NextRequest) {
       finalAssigneeId = assigneeIdIn;
     }
 
+    const selectorId = await getNextTicketSelectorId();
+    const sprintStartDate = sprintForTicket
+      ? new Date(sprintForTicket.startsAt)
+      : null;
+    const sprintDueDate = sprintForTicket
+      ? new Date(sprintForTicket.endsAt)
+      : null;
+
     const ticket = await db.ticket.create({
       data: {
         title,
+        selectorId,
+        workType,
         description,
         acceptanceCriteria,
         status,
         priority,
-        startDate: startDate ?? null,
-        dueDate: dueDate ?? null,
+        startDate: sprintStartDate ?? startDate ?? null,
+        dueDate: sprintDueDate ?? dueDate ?? null,
         creatorId: user.id,
         clientId: finalClientId,
         assigneeId: finalAssigneeId,
         teamId: teamIdIn,
         projectId: projectIdIn,
+        sprintId: sprintIdIn ?? null,
       },
     });
 
@@ -466,7 +590,15 @@ export async function POST(request: NextRequest) {
       ticketId: ticket.id,
       actorId: user.id,
       type: "CREATED",
-      summary: `Ticket created: ${title}`,
+      summary: `Ticket #${selectorId} created: ${title}`,
+      metadata: {
+        workType,
+        suggestedBranch: buildTicketBranchName({
+          workType,
+          selectorId,
+          title,
+        }),
+      },
     });
 
     if (projectForTicket) {

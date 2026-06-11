@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 
 interface Ticket {
   id: string;
+  selectorId?: number | null;
   title: string;
   status: string;
   priority?: string | null;
@@ -68,6 +69,13 @@ interface Ticket {
       email: string;
     } | null;
   } | null;
+}
+
+function ticketDisplayId(ticket: Ticket): string {
+  if (typeof ticket.selectorId === "number") {
+    return `#${ticket.selectorId}`;
+  }
+  return "No selector ID";
 }
 
 interface KanbanBoardProps {
@@ -105,8 +113,20 @@ const statusConfig = {
     icon: Zap,
     bgColor: "bg-blue-500/10",
   },
+  IN_REVIEW: {
+    label: "In Review",
+    color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+    icon: Eye,
+    bgColor: "bg-cyan-500/10",
+  },
+  QA: {
+    label: "QA",
+    color: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+    icon: AlertCircle,
+    bgColor: "bg-orange-500/10",
+  },
   REVISIONS: {
-    label: "REVIEW",
+    label: "Revisions",
     color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
     icon: AlertCircle,
     bgColor: "bg-yellow-500/10",
@@ -213,9 +233,14 @@ function SortableTicket({
         }}
       >
         <div className="mb-2 flex items-start justify-between gap-2">
-          <h4 className="line-clamp-2 min-h-10 flex-1 text-sm font-medium normal-case leading-5 text-slate-900 dark:text-white">
-            {ticket.title}
-          </h4>
+          <div className="min-w-0 flex-1">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+              {ticketDisplayId(ticket)}
+            </p>
+            <h4 className="line-clamp-2 min-h-10 text-sm font-medium normal-case leading-5 text-slate-900 dark:text-white">
+              {ticket.title}
+            </h4>
+          </div>
           <button
             type="button"
             className="shrink-0 text-gray-400 opacity-0 transition-opacity hover:text-gray-700 group-hover:opacity-100 dark:hover:text-gray-300"
@@ -259,9 +284,14 @@ function DraggedTicket({ ticket }: { ticket: Ticket }) {
   return (
     <div className="w-full max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
       <div className="flex items-start justify-between mb-3">
-        <h4 className="line-clamp-2 min-h-10 flex-1 text-sm font-medium leading-5 text-slate-900 dark:text-white">
-          {ticket.title}
-        </h4>
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+            {ticketDisplayId(ticket)}
+          </p>
+          <h4 className="line-clamp-2 min-h-10 text-sm font-medium leading-5 text-slate-900 dark:text-white">
+            {ticket.title}
+          </h4>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -321,14 +351,20 @@ export default function KanbanBoard({
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const boardScrollRef = useRef<HTMLDivElement>(null);
+  const boardResetKey = useMemo(
+    () => tickets.map((ticket) => `${ticket.id}:${ticket.status}`).join("|"),
+    [tickets],
+  );
 
   useEffect(() => {
     const scroller = boardScrollRef.current;
     if (!scroller) return;
 
-    // Always land on the first kanban column when the board mounts.
-    scroller.scrollTo({ left: 0, behavior: "auto" });
-  }, []);
+    // Keep the board anchored to the first column after data refreshes.
+    requestAnimationFrame(() => {
+      scroller.scrollTo({ left: 0, behavior: "auto" });
+    });
+  }, [boardResetKey]);
 
   const groupedTickets = tickets.reduce(
     (acc, ticket) => {
@@ -377,11 +413,20 @@ export default function KanbanBoard({
       }
     });
 
-    if (
-      Object.keys(statusConfig).includes(overId) &&
-      currentStatus !== overId
-    ) {
-      onStatusChange(activeId, overId);
+    let targetStatus = "";
+
+    if (Object.keys(statusConfig).includes(overId)) {
+      targetStatus = overId;
+    } else {
+      Object.entries(groupedTickets).forEach(([status, columnTickets]) => {
+        if (columnTickets.some((ticket) => ticket.id === overId)) {
+          targetStatus = status;
+        }
+      });
+    }
+
+    if (targetStatus && currentStatus !== targetStatus) {
+      onStatusChange(activeId, targetStatus);
     }
   };
 

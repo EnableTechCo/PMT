@@ -1,6 +1,13 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef, type ChangeEvent } from "react";
+import {
+  Suspense,
+  useCallback,
+  useState,
+  useEffect,
+  useRef,
+  type ChangeEvent,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,6 +37,34 @@ import { cn } from "@/lib/utils";
 interface GithubUser {
   login: string;
   avatarUrl: string;
+}
+
+interface GithubRepoItem {
+  id: number;
+  name: string;
+  full_name: string;
+  html_url: string;
+  default_branch?: string;
+  private?: boolean;
+  owner: {
+    login: string;
+  };
+}
+
+interface GithubBranchItem {
+  name: string;
+  protected?: boolean;
+}
+
+interface GithubPullRequestItem {
+  id: number;
+  number: number;
+  title: string;
+  state: string;
+  html_url: string;
+  user?: {
+    login?: string;
+  };
 }
 
 type GithubConnectionSource = "system" | "user";
@@ -92,6 +127,18 @@ function SettingsPageContent() {
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [showSwitchGithubForm, setShowSwitchGithubForm] = useState(false);
   const [superGithubLoading, setSuperGithubLoading] = useState(false);
+  const [githubRepos, setGithubRepos] = useState<GithubRepoItem[]>([]);
+  const [githubReposLoading, setGithubReposLoading] = useState(false);
+  const [githubReposError, setGithubReposError] = useState("");
+  const [selectedRepoFullName, setSelectedRepoFullName] = useState("");
+  const [selectedRepoBranches, setSelectedRepoBranches] = useState<
+    GithubBranchItem[]
+  >([]);
+  const [selectedRepoPullRequests, setSelectedRepoPullRequests] = useState<
+    GithubPullRequestItem[]
+  >([]);
+  const [selectedRepoLoading, setSelectedRepoLoading] = useState(false);
+  const [selectedRepoError, setSelectedRepoError] = useState("");
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupNowLoading, setBackupNowLoading] = useState(false);
   const [importingBackup, setImportingBackup] = useState(false);
@@ -117,8 +164,9 @@ function SettingsPageContent() {
     if (user) {
       setName(user.name);
       setEmail(user.email);
-      checkGithubStatus();
+      void checkGithubStatus();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
@@ -153,12 +201,25 @@ function SettingsPageContent() {
     if (githubStatus === "oauth_state_invalid") {
       setConnectError("GitHub OAuth state validation failed. Please retry.");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   useEffect(() => {
     if (activeTab !== "backup" || !isSuperAdmin) return;
     void loadBackups();
   }, [activeTab, isSuperAdmin]);
+
+  useEffect(() => {
+    if (!githubUser || !selectedRepoFullName) {
+      setSelectedRepoBranches([]);
+      setSelectedRepoPullRequests([]);
+      setSelectedRepoError("");
+      return;
+    }
+
+    void loadSelectedRepoDetails(selectedRepoFullName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [githubUser, selectedRepoFullName]);
 
   async function sendTestEmail() {
     setTestEmailLoading(true);
@@ -264,6 +325,148 @@ function SettingsPageContent() {
       setDiagnosticLoading(false);
     }
   }
+
+  const loadGithubProjectAccount = useCallback(async () => {
+    setGithubReposLoading(true);
+    setGithubReposError("");
+
+    try {
+      const response = await fetch("/api/github/repos", {
+        method: "GET",
+      });
+
+      const body = await response.json().catch(() => []);
+
+      if (!response.ok) {
+        throw new Error(
+          typeof body?.error === "string"
+            ? body.error
+            : "Failed to load GitHub repositories",
+        );
+      }
+
+      const repos = Array.isArray(body) ? (body as GithubRepoItem[]) : [];
+      setGithubRepos(repos);
+
+      if (!repos.length) {
+        setSelectedRepoFullName("");
+        return;
+      }
+
+      setSelectedRepoFullName((current) => {
+        if (current && repos.some((repo) => repo.full_name === current)) {
+          return current;
+        }
+
+        return repos[0].full_name;
+      });
+    } catch (error) {
+      setGithubRepos([]);
+      setSelectedRepoFullName("");
+      setSelectedRepoBranches([]);
+      setSelectedRepoPullRequests([]);
+      setGithubReposError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load GitHub repositories",
+      );
+    } finally {
+      setGithubReposLoading(false);
+    }
+  }, []);
+
+  const loadSelectedRepoDetails = useCallback(
+    async (fullName: string) => {
+      const repoMatch = githubRepos.find((repo) => repo.full_name === fullName);
+
+      if (!repoMatch) {
+        setSelectedRepoError("Select a repository to view branches and PRs.");
+        return;
+      }
+
+      setSelectedRepoLoading(true);
+      setSelectedRepoError("");
+
+      const owner = encodeURIComponent(repoMatch.owner.login);
+      const repo = encodeURIComponent(repoMatch.name);
+
+      try {
+        const [branchesResponse, pullRequestsResponse] = await Promise.all([
+          fetch(`/api/github/branches?owner=${owner}&repo=${repo}`),
+          fetch(`/api/github/pull-requests?owner=${owner}&repo=${repo}`),
+        ]);
+
+        const [branchesBody, pullRequestsBody] = await Promise.all([
+          branchesResponse.json().catch(() => []),
+          pullRequestsResponse.json().catch(() => []),
+        ]);
+
+        if (!branchesResponse.ok) {
+          throw new Error(
+            typeof branchesBody?.error === "string"
+              ? branchesBody.error
+              : "Failed to load repository branches",
+          );
+        }
+
+        if (!pullRequestsResponse.ok) {
+          throw new Error(
+            typeof pullRequestsBody?.error === "string"
+              ? pullRequestsBody.error
+              : "Failed to load repository pull requests",
+          );
+        }
+
+        setSelectedRepoBranches(
+          Array.isArray(branchesBody)
+            ? (branchesBody as GithubBranchItem[])
+            : [],
+        );
+        setSelectedRepoPullRequests(
+          Array.isArray(pullRequestsBody)
+            ? (pullRequestsBody as GithubPullRequestItem[])
+            : [],
+        );
+      } catch (error) {
+        setSelectedRepoBranches([]);
+        setSelectedRepoPullRequests([]);
+        setSelectedRepoError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load repository details",
+        );
+      } finally {
+        setSelectedRepoLoading(false);
+      }
+    },
+    [githubRepos],
+  );
+
+  const checkGithubStatus = useCallback(async () => {
+    setCheckingStatus(true);
+    try {
+      const res = await fetch("/api/github/auth");
+      const data = await res.json();
+      if (res.ok && data.connected) {
+        setGithubUser(data.githubUser);
+        setGithubSource(data.source ?? "user");
+        await loadGithubProjectAccount();
+      } else {
+        setGithubUser(null);
+        setGithubSource(null);
+        setGithubRepos([]);
+        setSelectedRepoFullName("");
+        setSelectedRepoBranches([]);
+        setSelectedRepoPullRequests([]);
+        setGithubReposError("");
+        setSelectedRepoError("");
+      }
+    } catch (e) {
+      console.error("Check status error:", e);
+    } finally {
+      setCheckingStatus(false);
+    }
+  }, [loadGithubProjectAccount]);
 
   return (
     <DashboardLayout>
@@ -549,6 +752,216 @@ function SettingsPageContent() {
                           </button>
                         ) : null}
                       </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-[#13131a] space-y-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Project account explorer
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Review repositories, branches, and pull requests for
+                            your connected GitHub account.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void loadGithubProjectAccount();
+                          }}
+                          disabled={githubReposLoading || connecting}
+                          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                        >
+                          {githubReposLoading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCcw className="h-3.5 w-3.5" />
+                          )}
+                          Refresh repositories
+                        </button>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-lg border border-gray-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-slate-900/40">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                            Repositories
+                          </p>
+                          <p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">
+                            {githubRepos.length}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-slate-900/40">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                            Branches
+                          </p>
+                          <p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">
+                            {selectedRepoBranches.length}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-slate-900/40">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                            Pull requests
+                          </p>
+                          <p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">
+                            {selectedRepoPullRequests.length}
+                          </p>
+                        </div>
+                      </div>
+
+                      {githubReposError ? (
+                        <p className="text-sm text-red-600 dark:text-red-300">
+                          {githubReposError}
+                        </p>
+                      ) : null}
+
+                      {githubRepos.length ? (
+                        <div className="space-y-4">
+                          <div className="space-y-1">
+                            <label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                              Repository
+                            </label>
+                            <select
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-[#1c1c24] dark:text-white"
+                              value={selectedRepoFullName}
+                              onChange={(event) => {
+                                setSelectedRepoFullName(event.target.value);
+                              }}
+                            >
+                              {githubRepos.map((repo) => {
+                                const value = repo.full_name;
+                                return (
+                                  <option key={repo.id} value={value}>
+                                    {repo.full_name}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+
+                          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                            <div className="max-h-52 overflow-auto divide-y divide-gray-200 dark:divide-gray-800">
+                              {githubRepos.map((repo) => {
+                                const isSelected =
+                                  repo.full_name === selectedRepoFullName;
+                                return (
+                                  <button
+                                    key={repo.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedRepoFullName(repo.full_name);
+                                    }}
+                                    className={cn(
+                                      "w-full px-3 py-2.5 text-left transition-colors",
+                                      isSelected
+                                        ? "bg-brand-50 dark:bg-brand-500/10"
+                                        : "bg-white hover:bg-gray-50 dark:bg-[#111118] dark:hover:bg-[#1b1b24]",
+                                    )}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                        {repo.full_name}
+                                      </p>
+                                      <span className="text-[11px] uppercase tracking-wide text-gray-500">
+                                        {repo.private ? "Private" : "Public"}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-xs text-gray-500">
+                                      Default branch:{" "}
+                                      {repo.default_branch || "main"}
+                                    </p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {selectedRepoError ? (
+                            <p className="text-sm text-red-600 dark:text-red-300">
+                              {selectedRepoError}
+                            </p>
+                          ) : null}
+
+                          {selectedRepoLoading ? (
+                            <div className="flex items-center gap-2 text-sm text-gray-500">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Loading branches and pull requests...
+                            </div>
+                          ) : (
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <div className="rounded-lg border border-gray-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-slate-900/40">
+                                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                  Branches
+                                </p>
+                                <div className="mt-2 max-h-56 space-y-1 overflow-auto">
+                                  {selectedRepoBranches.length ? (
+                                    selectedRepoBranches.map((branch) => (
+                                      <div
+                                        key={branch.name}
+                                        className="rounded-md border border-gray-200 bg-white px-2.5 py-2 text-xs text-slate-800 dark:border-gray-700 dark:bg-[#12121a] dark:text-slate-200"
+                                      >
+                                        <p className="font-semibold">
+                                          {branch.name}
+                                        </p>
+                                        <p className="mt-0.5 text-[11px] text-gray-500">
+                                          {branch.protected
+                                            ? "Protected branch"
+                                            : "Standard branch"}
+                                        </p>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <p className="text-xs text-gray-500">
+                                      No branches returned for this repository.
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="rounded-lg border border-gray-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-slate-900/40">
+                                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                  Pull requests
+                                </p>
+                                <div className="mt-2 max-h-56 space-y-1 overflow-auto">
+                                  {selectedRepoPullRequests.length ? (
+                                    selectedRepoPullRequests.map((pr) => (
+                                      <a
+                                        key={pr.id}
+                                        href={pr.html_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block rounded-md border border-gray-200 bg-white px-2.5 py-2 text-xs text-slate-800 hover:bg-gray-50 dark:border-gray-700 dark:bg-[#12121a] dark:text-slate-200 dark:hover:bg-[#1a1a24]"
+                                      >
+                                        <p className="font-semibold">
+                                          #{pr.number} {pr.title}
+                                        </p>
+                                        <p className="mt-0.5 text-[11px] text-gray-500">
+                                          {pr.state} by{" "}
+                                          {pr.user?.login || "unknown"}
+                                        </p>
+                                      </a>
+                                    ))
+                                  ) : (
+                                    <p className="text-xs text-gray-500">
+                                      No pull requests returned for this
+                                      repository.
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : githubReposLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading repositories...
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          No repositories found for this account.
+                        </p>
+                      )}
                     </div>
 
                     {!isSuperAdmin && showSwitchGithubForm ? (
@@ -1106,11 +1519,15 @@ function SettingsPageContent() {
       const data = await res.json();
       if (res.ok) {
         setGithubUser(data.githubUser);
+        setGithubSource(data.source ?? "user");
+        setGithubReposError("");
+        setSelectedRepoError("");
         setSuccessMsg(
           "Successfully authenticated with GitHub! Your repositories and branches are now active.",
         );
         setGithubToken("");
         setShowSwitchGithubForm(false);
+        await loadGithubProjectAccount();
       } else {
         setConnectError(
           data.error ||
@@ -1134,6 +1551,13 @@ function SettingsPageContent() {
       });
       if (res.ok) {
         setGithubUser(null);
+        setGithubSource(null);
+        setGithubRepos([]);
+        setSelectedRepoFullName("");
+        setSelectedRepoBranches([]);
+        setSelectedRepoPullRequests([]);
+        setGithubReposError("");
+        setSelectedRepoError("");
         setShowSwitchGithubForm(false);
         setSuccessMsg("GitHub connection removed successfully.");
       } else {
@@ -1179,32 +1603,6 @@ function SettingsPageContent() {
       );
     } finally {
       setSuperGithubLoading(false);
-    }
-  }
-
-  async function checkGithubStatus() {
-    setCheckingStatus(true);
-    try {
-      // Fetch user's own repos. If this returns 400 "GitHub not connected", then they're not connected!
-      // But let's check if we can get user info or if they are authenticated.
-      // Wait, let's fetch `/api/github/repos` with a parameter to not trigger full list, or just let it list.
-      // Better: we can fetch repos. If it works, we can also fetch the authenticated GitHub user to show login/avatar!
-      // But wait, the listForAuthenticatedUser call requires a valid token. If it's valid, we can fetch their github profile info using octokit or using a custom backend endpoint!
-      // Let's first make a custom backend GET endpoint for `/api/github/auth` so that we get the authenticated GitHub user info directly and cleanly!
-      // Let's implement that!
-      const res = await fetch("/api/github/auth");
-      const data = await res.json();
-      if (res.ok && data.connected) {
-        setGithubUser(data.githubUser);
-        setGithubSource(data.source ?? "user");
-      } else {
-        setGithubUser(null);
-        setGithubSource(null);
-      }
-    } catch (e) {
-      console.error("Check status error:", e);
-    } finally {
-      setCheckingStatus(false);
     }
   }
 

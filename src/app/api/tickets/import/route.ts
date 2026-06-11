@@ -84,7 +84,7 @@ async function resolveRow(
   if (!(Object.values(TicketStatus) as string[]).includes(statusIn)) {
     return {
       error:
-        "status is invalid. Use BACKLOG, TODO, REFINE, IN_PROGRESS, REVISIONS, CLIENT_REVIEW, COMPLETE",
+        "status is invalid. Use BACKLOG, TODO, REFINE, IN_PROGRESS, IN_REVIEW, QA, REVISIONS, CLIENT_REVIEW, COMPLETE",
     };
   }
 

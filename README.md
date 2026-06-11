@@ -14,6 +14,7 @@ This is a departmental tool designed to manage project workflows, track tickets,
 - [Installation & Local Setup](#-installation--local-setup)
 - [Database Architecture & Management](#-database-architecture--management)
 - [Authentication & Role-Based Access](#-authentication--role-based-access)
+- [Selector IDs & PR Linking](#-selector-ids--pr-linking)
 - [API Documentation](#-api-documentation)
 - [Comprehensive Project Structure](#-comprehensive-project-structure)
 - [Deployment Strategies](#-deployment-strategies)
@@ -149,6 +150,41 @@ Access is managed through three distinct roles:
 
 ---
 
+## Selector IDs & PR Linking
+
+Selector IDs are stored in the database (`Ticket.selectorId`) and are used as the canonical link key between tickets and GitHub PRs.
+
+### How Selector IDs Are Assigned
+
+- **New tickets**: Assigned automatically on ticket creation in the backend.
+- **Existing tickets**: Can be assigned via one-time backfill.
+- **Uniqueness**: Enforced by a partial unique index on `Ticket.selectorId` where value is not null.
+
+### Workload Tab Operations (Super Admin)
+
+In the **Workload** page, under **Ticket selector operations**:
+
+- **Backfill selector IDs**:
+  - Fills missing selector IDs for legacy tickets.
+  - Recommended to run before linking older PRs.
+
+- **Link existing PR to ticket**:
+  - Links with `selectorId + owner/repo + PR number`.
+  - Uses searchable select menus for all fields:
+    - Selector ID
+    - Owner
+    - Repo
+    - PR number
+
+### API Endpoints Used
+
+- `POST /api/tickets/selector-ids/backfill`
+- `POST /api/github/pull-requests/assign`
+- `GET /api/github/repos`
+- `GET /api/github/pull-requests?owner=<owner>&repo=<repo>`
+
+---
+
 ## API Documentation
 
 ### Auth
@@ -200,7 +236,7 @@ pnpm docker:run
 ## Testing & Quality Assurance
 
 - **Linting**: `pnpm lint`
-- **Type Checking**: `pnpm type-check`
+- **Type Checking**: `pnpm typecheck`
 - **Unit Tests**: `pnpm test`
 - **Auditing**:`pnpm audit`
 

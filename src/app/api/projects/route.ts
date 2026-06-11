@@ -84,16 +84,6 @@ export async function GET(request: NextRequest) {
       url: request.url,
     };
 
-    const isSuperAdmin = user.role === Role.SUPER_ADMIN;
-    if (isSuperAdmin) {
-      console.info("[projects][super-admin] GET request", {
-        userId: user.id,
-        teamId,
-        portfolioId,
-        url: request.url,
-      });
-    }
-
     if (user.role === Role.CLIENT) {
       return NextResponse.json([]);
     }
@@ -235,15 +225,6 @@ export async function GET(request: NextRequest) {
         tickets: ticketCountByProject.get(project.id) ?? 0,
       },
     }));
-
-    if (isSuperAdmin) {
-      console.info("[projects][super-admin] GET success", {
-        userId: user.id,
-        teamId,
-        portfolioId,
-        resultCount: projects.length,
-      });
-    }
 
     return NextResponse.json(projects);
   } catch (error) {
