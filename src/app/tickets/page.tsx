@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/contexts/TeamContext";
@@ -189,7 +189,7 @@ const SAMPLE_IMPORT_JSON = `[
   }
 ]`;
 
-export default function TicketsPage() {
+function TicketsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const hasAppliedQueryRef = useRef(false);
@@ -1185,5 +1185,19 @@ export default function TicketsPage() {
         </div>
       </DashboardLayout>
     </IconContext.Provider>
+  );
+}
+
+export default function TicketsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-brand-600" />
+        </div>
+      }
+    >
+      <TicketsPageContent />
+    </Suspense>
   );
 }
