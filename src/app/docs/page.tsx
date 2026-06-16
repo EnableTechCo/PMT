@@ -1,18 +1,26 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTeam } from "@/contexts/TeamContext";
 import DashboardLayout from "@/components/DashboardLayout";
-import {
-  ArrowUpRight,
-  ChevronRight,
-  Plus,
-  Search,
-  X,
-} from "lucide-react";
+import { ArrowUpRight, ChevronRight, Plus, Search, X } from "lucide-react";
 import { onRealtimeChange } from "@/lib/realtime-events";
+
+type Heading = {
+  id: string;
+  level: number;
+  text: string;
+};
+
+function slugifyHeading(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+}
 
 type AuthoredDoc = {
   id: string;
@@ -60,6 +68,10 @@ function itemSearchText(item: LibraryItem) {
 export default function DocsPage() {
   const router = useRouter();
   const { activeTeamId, isAllTeams } = useTeam();
+  const docsCacheKey = useMemo(
+    () => `docs-library-cache:${isAllTeams ? "all" : (activeTeamId ?? "none")}`,
+    [activeTeamId, isAllTeams],
+  );
   const [authoredDocs, setAuthoredDocs] = useState<AuthoredDoc[]>([]);
   const [repoReadmes, setRepoReadmes] = useState<RepoReadme[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,10 +82,53 @@ export default function DocsPage() {
   const [newDocTitle, setNewDocTitle] = useState("");
   const [createDocError, setCreateDocError] = useState("");
   const [creatingDoc, setCreatingDoc] = useState(false);
+  const [headings, setHeadings] = useState<Heading[]>([]);
+  const [activeHeadingId, setActiveHeadingId] = useState<string>("");
+  const articleRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const contentPaneRef = useRef<HTMLElement>(null);
+  const isFetchingLibraryRef = useRef(false);
+  const hasLoadedLibraryOnceRef = useRef(false);
+  const lastLibrarySignatureRef = useRef<string>("");
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(docsCacheKey);
+      if (!raw) {
+        lastLibrarySignatureRef.current = "";
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as DocsLibraryResponse;
+      const cachedAuthoredDocs = Array.isArray(parsed.authoredDocs)
+        ? parsed.authoredDocs
+        : [];
+      const cachedRepoReadmes = Array.isArray(parsed.repoReadmes)
+        ? parsed.repoReadmes
+        : [];
+
+      setAuthoredDocs(cachedAuthoredDocs);
+      setRepoReadmes(cachedRepoReadmes);
+      lastLibrarySignatureRef.current = JSON.stringify({
+        authoredDocs: cachedAuthoredDocs,
+        repoReadmes: cachedRepoReadmes,
+      });
+      setLoading(false);
+    } catch (error) {
+      console.error("[Docs] Failed to read local cache", error);
+      lastLibrarySignatureRef.current = "";
+    }
+  }, [docsCacheKey]);
 
   const fetchDocsLibrary = useCallback(async () => {
+    if (isFetchingLibraryRef.current) return;
+
     try {
-      setLoading(true);
+      isFetchingLibraryRef.current = true;
+      if (!hasLoadedLibraryOnceRef.current) {
+        setLoading(true);
+      }
+
       const params = new URLSearchParams();
       if (activeTeamId && !isAllTeams) {
         params.set("teamId", activeTeamId);
@@ -81,6 +136,7 @@ export default function DocsPage() {
 
       const response = await fetch(
         `/api/docs/library${params.toString() ? `?${params}` : ""}`,
+        { cache: "no-store" },
       );
 
       if (!response.ok) {
@@ -88,18 +144,44 @@ export default function DocsPage() {
       }
 
       const data = (await response.json()) as DocsLibraryResponse;
-      setAuthoredDocs(
-        Array.isArray(data.authoredDocs) ? data.authoredDocs : [],
-      );
-      setRepoReadmes(Array.isArray(data.repoReadmes) ? data.repoReadmes : []);
+      const nextAuthoredDocs = Array.isArray(data.authoredDocs)
+        ? data.authoredDocs
+        : [];
+      const nextRepoReadmes = Array.isArray(data.repoReadmes)
+        ? data.repoReadmes
+        : [];
+      const nextSignature = JSON.stringify({
+        authoredDocs: nextAuthoredDocs,
+        repoReadmes: nextRepoReadmes,
+      });
+
+      if (nextSignature === lastLibrarySignatureRef.current) {
+        return;
+      }
+
+      setAuthoredDocs(nextAuthoredDocs);
+      setRepoReadmes(nextRepoReadmes);
+      lastLibrarySignatureRef.current = nextSignature;
+
+      try {
+        window.localStorage.setItem(
+          docsCacheKey,
+          JSON.stringify({
+            authoredDocs: nextAuthoredDocs,
+            repoReadmes: nextRepoReadmes,
+          }),
+        );
+      } catch (error) {
+        console.error("[Docs] Failed to write local cache", error);
+      }
     } catch (error) {
       console.error(error);
-      setAuthoredDocs([]);
-      setRepoReadmes([]);
     } finally {
+      isFetchingLibraryRef.current = false;
+      hasLoadedLibraryOnceRef.current = true;
       setLoading(false);
     }
-  }, [activeTeamId, isAllTeams]);
+  }, [activeTeamId, docsCacheKey, isAllTeams]);
 
   useEffect(() => {
     void fetchDocsLibrary();
@@ -164,6 +246,77 @@ export default function DocsPage() {
     return item.title;
   };
 
+  // Extract headings from rendered content and assign stable IDs.
+  useEffect(() => {
+    if (!selectedItem?.contentHtml) {
+      setHeadings([]);
+      setActiveHeadingId("");
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      if (!contentRef.current) return;
+
+      const nextHeadings: Heading[] = [];
+      contentRef.current
+        .querySelectorAll("h1, h2, h3, h4")
+        .forEach((el, idx) => {
+          const level = Number(el.tagName[1]);
+          const text = (el.textContent || "").trim();
+          const baseId = slugifyHeading(text) || `section-${idx + 1}`;
+          const id = `${baseId}-${idx + 1}`;
+          el.id = id;
+          nextHeadings.push({ id, level, text: text || `Section ${idx + 1}` });
+        });
+
+      const docTitle = (selectedItem.title || "").trim().toLowerCase();
+      const filteredHeadings = nextHeadings.filter((heading) => {
+        if (!heading.text.trim()) return false;
+        if (heading.text.trim().toLowerCase() === docTitle) {
+          return false;
+        }
+        return true;
+      });
+
+      setHeadings(filteredHeadings);
+      setActiveHeadingId(filteredHeadings[0]?.id ?? "");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedItem?.id, selectedItem?.contentHtml]);
+
+  // Track active heading based on page scroll position.
+  useEffect(() => {
+    if (!headings.length) return;
+
+    const handleScroll = () => {
+      if (!contentRef.current || !contentPaneRef.current) return;
+
+      const headingElements = Array.from(
+        contentRef.current.querySelectorAll("h1, h2, h3, h4"),
+      ).filter((el) => Boolean(el.id));
+      if (!headingElements.length) return;
+
+      const paneTop = contentPaneRef.current.getBoundingClientRect().top;
+      let currentId = headingElements[0].id;
+      for (const el of headingElements) {
+        if (el.getBoundingClientRect().top - paneTop <= 140) {
+          currentId = el.id;
+        } else {
+          break;
+        }
+      }
+
+      setActiveHeadingId(currentId);
+    };
+
+    handleScroll();
+    const pane = contentPaneRef.current;
+    if (!pane) return;
+    pane.addEventListener("scroll", handleScroll, { passive: true });
+    return () => pane.removeEventListener("scroll", handleScroll);
+  }, [headings, selectedItem?.id]);
+
   const createDoc = async () => {
     const title = newDocTitle.trim();
     if (!title) {
@@ -212,7 +365,7 @@ export default function DocsPage() {
 
   return (
     <DashboardLayout>
-      <div className="w-full min-h-[calc(100vh-7rem)] overflow-hidden border border-[#d0d7de] bg-[#f6f8fa] text-[#24292f]">
+      <div className="flex h-[calc(100vh-7rem)] w-full flex-col overflow-hidden border border-[#d0d7de] bg-[#f6f8fa] text-[#24292f]">
         <header className="border-b border-[#d0d7de] bg-white px-5 py-4">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -241,10 +394,10 @@ export default function DocsPage() {
           </div>
         </header>
 
-        <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-6 px-5 py-6 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="hidden xl:block">
-            <div className="sticky top-6 border border-[#d0d7de] bg-white">
-              <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-2 py-2">
+        <div className="mx-auto grid min-h-0 flex-1 w-full max-w-[1440px] grid-cols-1 gap-6 overflow-hidden px-5 py-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="hidden min-h-0 h-full xl:block">
+            <div className="h-full border border-[#d0d7de] bg-white">
+              <div className="h-full overflow-y-auto px-2 py-2">
                 <details
                   open
                   className="group border-b border-[#d8dee4] px-2 py-1 last:border-b-0"
@@ -252,42 +405,174 @@ export default function DocsPage() {
                   <summary className="cursor-pointer list-none py-1.5 text-md text-[#24292f] font-bold">
                     Docs
                   </summary>
-                  <div className="pb-2">
-                    {visibleItems.length ? (
-                      visibleItems.map((item) => (
-                        <button
-                          key={`nav-item-${item.id}`}
-                          type="button"
-                          onClick={() => setSelectedId(item.id)}
-                          className={`mt-1 flex w-full items-center gap-2 border-l-2 px-2 py-1.5 text-left text-sm font-medium ${
-                            selectedId === item.id
-                              ? "border-brand-600 text-brand-600"
-                              : "border-transparent text-[#57606a] hover:text-[#24292f]"
-                          }`}
-                          title={sidebarItemTitle(item)}
-                        >
-                          <span className="min-w-0 flex-1 truncate">
-                            {sidebarItemTitle(item)}
-                          </span>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-current opacity-70" />
-                        </button>
-                      ))
-                    ) : (
+                  <div className="pb-2 space-y-3">
+                    <div>
+                      <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-[#57606a]">
+                        Team documents
+                      </p>
+                      {filteredAuthoredDocs.length ? (
+                        filteredAuthoredDocs.map((item) => (
+                          <button
+                            key={`nav-authored-${item.id}`}
+                            type="button"
+                            onClick={() => setSelectedId(item.id)}
+                            className={`mt-1 flex w-full items-center gap-2 border-l-2 px-2 py-1.5 text-left text-sm font-medium cursor-pointer pointer-events-auto ${
+                              selectedId === item.id
+                                ? "border-brand-600 text-brand-600"
+                                : "border-transparent text-[#57606a] hover:text-[#24292f]"
+                            }`}
+                            title={sidebarItemTitle(item)}
+                          >
+                            <span className="min-w-0 flex-1 truncate">
+                              {sidebarItemTitle(item)}
+                            </span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-current opacity-70" />
+                          </button>
+                        ))
+                      ) : (
+                        <p className="mt-1 px-2 py-1 text-xs text-[#57606a]">
+                          No team docs.
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-[#57606a]">
+                        Repository READMEs
+                      </p>
+                      {filteredRepoReadmes.length ? (
+                        filteredRepoReadmes.map((item) => (
+                          <button
+                            key={`nav-readme-${item.id}`}
+                            type="button"
+                            onClick={() => setSelectedId(item.id)}
+                            className={`mt-1 flex w-full items-center gap-2 border-l-2 px-2 py-1.5 text-left text-sm font-medium cursor-pointer pointer-events-auto ${
+                              selectedId === item.id
+                                ? "border-brand-600 text-brand-600"
+                                : "border-transparent text-[#57606a] hover:text-[#24292f]"
+                            }`}
+                            title={sidebarItemTitle(item)}
+                          >
+                            <span className="min-w-0 flex-1 truncate">
+                              {sidebarItemTitle(item)}
+                            </span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-current opacity-70" />
+                          </button>
+                        ))
+                      ) : (
+                        <p className="mt-1 px-2 py-1 text-xs text-[#57606a]">
+                          No repository README docs.
+                        </p>
+                      )}
+                    </div>
+
+                    {headings.length > 0 ? (
+                      <ul className="mt-2 border-t border-[#d8dee4] pt-3 space-y-1.5 text-sm px-2 pb-2">
+                        {headings.map((heading) => (
+                          <li key={heading.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!contentRef.current) return;
+
+                                let el = contentRef.current.querySelector(
+                                  `#${CSS.escape(heading.id)}`,
+                                ) as HTMLElement | null;
+
+                                if (!el) {
+                                  const liveHeadings = Array.from(
+                                    contentRef.current.querySelectorAll(
+                                      "h1, h2, h3, h4",
+                                    ),
+                                  ) as HTMLHeadingElement[];
+
+                                  liveHeadings.forEach((node, idx) => {
+                                    const text = (
+                                      node.textContent || ""
+                                    ).trim();
+                                    const baseId =
+                                      slugifyHeading(text) ||
+                                      `section-${idx + 1}`;
+                                    node.id = `${baseId}-${idx + 1}`;
+                                  });
+
+                                  el = contentRef.current.querySelector(
+                                    `#${CSS.escape(heading.id)}`,
+                                  ) as HTMLElement | null;
+
+                                  if (!el) {
+                                    el =
+                                      liveHeadings.find(
+                                        (node) =>
+                                          (node.textContent || "").trim() ===
+                                          heading.text,
+                                      ) ?? null;
+                                  }
+                                }
+
+                                if (!el) {
+                                  return;
+                                }
+
+                                if (!contentPaneRef.current) return;
+
+                                const paneTop =
+                                  contentPaneRef.current.getBoundingClientRect()
+                                    .top;
+                                const offsetTop =
+                                  contentPaneRef.current.scrollTop +
+                                  (el.getBoundingClientRect().top - paneTop) -
+                                  110;
+                                const targetTop = Math.max(offsetTop, 0);
+                                contentPaneRef.current.scrollTo({
+                                  top: targetTop,
+                                  behavior: "smooth",
+                                });
+                              }}
+                              style={{
+                                marginLeft: `${(heading.level - 1) * 12}px`,
+                              }}
+                              className={`block w-full text-left py-1.5 px-2 rounded transition-colors cursor-pointer pointer-events-auto ${
+                                activeHeadingId === heading.id
+                                  ? "text-brand-600 font-semibold bg-brand-600/5"
+                                  : "text-[#57606a] hover:text-[#24292f] hover:bg-gray-100/50"
+                              }`}
+                            >
+                              {heading.text}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+
+                    {!visibleItems.length ? (
                       <p className="mt-1 px-2 py-1 text-xs text-[#57606a]">
                         No docs found.
                       </p>
-                    )}
+                    ) : null}
                   </div>
                 </details>
               </div>
             </div>
           </aside>
 
-          <main className="space-y-6">
+          <main
+            ref={contentPaneRef}
+            className="h-full min-h-0 flex-1 overflow-y-auto pr-1"
+          >
             {!loading && selectedItem ? (
-              <article className="border border-[#d0d7de] bg-white p-6 sm:p-8">
+              <article
+                ref={articleRef}
+                id="doc-content"
+                className="border border-[#d0d7de] bg-white p-8 sm:p-12"
+              >
                 <div className="mb-6 flex flex-col gap-4 border-b border-[#d0d7de] pb-5 sm:flex-row sm:items-start sm:justify-between">
                   <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#57606a]">
+                      {selectedItem.kind === "repo-readme"
+                        ? "Repository README"
+                        : "Team Document"}
+                    </p>
                     <h3 className="mt-2 text-2xl font-semibold text-[#24292f]">
                       {selectedItem.title}
                     </h3>
@@ -316,7 +601,33 @@ export default function DocsPage() {
                   </div>
                 </div>
 
+                <section className="mb-6 grid gap-3 rounded-lg border border-[#d8dee4] bg-[#f6f8fa] p-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#57606a]">
+                      Source
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-[#24292f]">
+                      {selectedItem.kind === "repo-readme"
+                        ? `${selectedItem.owner}/${selectedItem.repo}`
+                        : (selectedItem.author?.name ?? "Unknown author")}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#57606a]">
+                      Last updated
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-[#24292f]">
+                      {selectedItem.kind === "repo-readme"
+                        ? selectedItem.updatedAt
+                          ? new Date(selectedItem.updatedAt).toLocaleString()
+                          : "Unknown"
+                        : new Date(selectedItem.updatedAt).toLocaleString()}
+                    </p>
+                  </div>
+                </section>
+
                 <div
+                  ref={contentRef}
                   className="docs-prose max-w-none text-[15px] leading-7 text-[#24292f]"
                   dangerouslySetInnerHTML={{
                     __html:

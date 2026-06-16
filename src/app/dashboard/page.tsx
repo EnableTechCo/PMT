@@ -35,8 +35,10 @@ import { onRealtimeChange } from "@/lib/realtime-events";
 
 interface Ticket {
   id: string;
+  selectorId?: number | null;
   title: string;
   status: string;
+  priority?: string | null;
   createdAt: string;
   updatedAt: string;
   creator: {
@@ -57,6 +59,22 @@ interface Ticket {
   team?: {
     id: string;
     name: string;
+  } | null;
+  project?: {
+    id: string;
+    name: string;
+    client?: {
+      id: string;
+      name: string;
+      email: string;
+    } | null;
+  } | null;
+  sprint?: {
+    id: string;
+    name: string;
+    status: string;
+    startsAt: string;
+    endsAt: string;
   } | null;
 }
 
@@ -160,12 +178,26 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [priorityFilter, setPriorityFilter] = useState<string>("");
+  const [sprintFilter, setSprintFilter] = useState<string>("__all__");
+  const [sprints, setSprints] = useState<
+    Array<{ id: string; name: string; status: string }>
+  >([]);
+  const [loadingSprints, setLoadingSprints] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedView, setSelectedView] = useState<"kanban" | "list">("kanban");
   const [currentPage, setCurrentPage] = useState(1);
   const [openPrCount, setOpenPrCount] = useState(0);
   const pageSize = 9;
+  const sprintFilterOptions = [
+    { value: "__all__", label: "All tickets" },
+    { value: "__active__", label: "Active sprint" },
+    { value: "backlog", label: "Backlog only" },
+    ...sprints.map((sprint) => ({
+      value: sprint.id,
+      label: `${sprint.name} (${sprint.status})`,
+    })),
+  ];
 
   const fetchGithubOverview = useCallback(async () => {
     if (!user || user.role !== "SUPER_ADMIN") return;
@@ -197,6 +229,32 @@ export default function DashboardPage() {
     }
   }, [user, isAllTeams, activeTeamId]);
 
+  const fetchSprints = useCallback(async () => {
+    if (!activeTeamId) {
+      setSprints([]);
+      return;
+    }
+
+    try {
+      setLoadingSprints(true);
+      const response = await fetch(`/api/sprints?teamId=${activeTeamId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSprints(Array.isArray(data) ? data : []);
+      } else {
+        setSprints([]);
+      }
+    } catch {
+      setSprints([]);
+    } finally {
+      setLoadingSprints(false);
+    }
+  }, [activeTeamId]);
+
+  useEffect(() => {
+    void fetchSprints();
+  }, [fetchSprints]);
+
   const fetchTickets = useCallback(async () => {
     if (!user) return;
 
@@ -206,6 +264,18 @@ export default function DashboardPage() {
       const params = new URLSearchParams();
       if (statusFilter) params.append("status", statusFilter);
       if (priorityFilter) params.append("priority", priorityFilter);
+
+      // Handle sprint filtering
+      if (sprintFilter === "__active__") {
+        const activeSprint = sprints.find((s) => s.status === "ACTIVE");
+        if (activeSprint) {
+          params.append("sprintId", activeSprint.id);
+        } else {
+          params.append("sprintId", "backlog");
+        }
+      } else if (sprintFilter && sprintFilter !== "__all__") {
+        params.append("sprintId", sprintFilter);
+      }
 
       if (user.role === "USER") {
         if (!activeTeamId) {
@@ -235,7 +305,15 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, statusFilter, priorityFilter, activeTeamId, isAllTeams]);
+  }, [
+    user,
+    statusFilter,
+    priorityFilter,
+    activeTeamId,
+    isAllTeams,
+    sprintFilter,
+    sprints,
+  ]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -380,7 +458,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, priorityFilter, activeTeamId, isAllTeams]);
+  }, [
+    searchQuery,
+    statusFilter,
+    priorityFilter,
+    sprintFilter,
+    activeTeamId,
+    isAllTeams,
+  ]);
 
   if (authLoading) {
     return (
@@ -487,6 +572,14 @@ export default function DashboardPage() {
               placeholder="Priority"
               className="min-w-[160px]"
             />
+            <SelectMenu
+              value={sprintFilter}
+              onChange={setSprintFilter}
+              disabled={loadingSprints}
+              options={sprintFilterOptions}
+              placeholder={loadingSprints ? "Loading sprints..." : "Sprint"}
+              className="min-w-[180px]"
+            />
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
@@ -505,6 +598,10 @@ export default function DashboardPage() {
             }}
             userRole={user.role}
             onCreateTicket={() => setShowCreateModal(true)}
+            activeTeamId={activeTeamId}
+            onTicketSprintChange={() => {
+              void fetchTickets();
+            }}
           />
 
           <CreateTicketModal
@@ -605,6 +702,18 @@ export default function DashboardPage() {
                     className="min-w-[180px]"
                     triggerClassName="bg-orange-100/60 border-2 border-orange-400 dark:bg-orange-950/40 dark:border-orange-700"
                   />
+
+                  <SelectMenu
+                    value={sprintFilter}
+                    onChange={setSprintFilter}
+                    disabled={loadingSprints}
+                    options={sprintFilterOptions}
+                    placeholder={
+                      loadingSprints ? "Loading sprints..." : "Sprint"
+                    }
+                    className="min-w-[200px]"
+                    triggerClassName="bg-green-100/60 border-2 border-green-400 dark:bg-green-950/40 dark:border-green-700"
+                  />
                 </div>
               </div>
             </div>
@@ -617,6 +726,10 @@ export default function DashboardPage() {
               }}
               userRole={user.role}
               onCreateTicket={() => setShowCreateModal(true)}
+              activeTeamId={activeTeamId}
+              onTicketSprintChange={() => {
+                void fetchTickets();
+              }}
             />
           </div>
         )}
@@ -670,6 +783,18 @@ export default function DashboardPage() {
                     placeholder="Priority"
                     className="min-w-[180px]"
                     triggerClassName="bg-orange-100/60 border-2 border-orange-400 dark:bg-orange-950/40 dark:border-orange-700"
+                  />
+
+                  <SelectMenu
+                    value={sprintFilter}
+                    onChange={setSprintFilter}
+                    disabled={loadingSprints}
+                    options={sprintFilterOptions}
+                    placeholder={
+                      loadingSprints ? "Loading sprints..." : "Sprint"
+                    }
+                    className="min-w-[200px]"
+                    triggerClassName="bg-green-100/60 border-2 border-green-400 dark:bg-green-950/40 dark:border-green-700"
                   />
                 </div>
               </div>

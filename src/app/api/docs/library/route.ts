@@ -87,7 +87,7 @@ async function fetchRepoReadmeHtml(
 
     return null;
   } catch (error: any) {
-    if (error?.status === 404) {
+    if (error?.status === 404 || error?.status === 403) {
       return null;
     }
     throw error;
@@ -183,7 +183,13 @@ export async function GET(request: NextRequest) {
               github,
               repo.owner,
               repo.name,
-            );
+            ).catch((error) => {
+              console.warn(
+                `Skipping README for ${repo.owner}/${repo.name}:`,
+                error,
+              );
+              return null;
+            });
 
             return {
               id: `repo:${repo.owner}/${repo.name}`,
@@ -203,14 +209,23 @@ export async function GET(request: NextRequest) {
         )
       : [];
 
-    return NextResponse.json({
-      authoredDocs: docs.map((doc: any) => ({
-        ...doc,
-        kind: "authored-doc",
-        contentHtml: doc.content ?? "",
-      })),
-      repoReadmes: repoReadmes.filter((item) => Boolean(item.contentHtml)),
-    });
+    return NextResponse.json(
+      {
+        authoredDocs: docs.map((doc: any) => ({
+          ...doc,
+          kind: "authored-doc",
+          contentHtml: doc.content ?? "",
+        })),
+        repoReadmes: repoReadmes.filter((item) => Boolean(item.contentHtml)),
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      },
+    );
   } catch (error) {
     console.error("Get docs library error:", error);
     return NextResponse.json(

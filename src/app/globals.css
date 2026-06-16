@@ -335,7 +335,7 @@ body::-webkit-scrollbar {
 }
 
 .docs-prose a {
-  color: #58a6ff;
+  color: #0969da;
   text-decoration: underline;
   text-underline-offset: 0.18em;
 }
@@ -347,10 +347,11 @@ body::-webkit-scrollbar {
 
 .docs-prose code {
   border-radius: 0.25rem;
-  background: rgba(110, 118, 129, 0.2);
+  background: #f6f8fa;
   padding: 0.14rem 0.38rem;
   font-size: 0.9em;
-  color: #f0f6fc;
+  color: #24292f;
+  border: 1px solid #d0d7de;
 }
 
 .docs-prose pre {
@@ -369,8 +370,10 @@ body::-webkit-scrollbar {
 }
 
 .docs-prose blockquote {
-  border-left: 3px solid rgba(239, 68, 68, 0.35);
+  border-left: 3px solid #0969da;
   padding-left: 1rem;
+  background: #f6f8fa;
+  border-radius: 0 0.25rem 0.25rem 0;
   font-style: italic;
 }
 

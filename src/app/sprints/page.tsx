@@ -959,16 +959,22 @@ export default function SprintsPage() {
                           columnItems.map((sprint) => (
                             <article
                               key={sprint.id}
-                              className="rounded-lg border border-[#d0d7de] bg-white p-3"
+                              className="rounded-lg border border-[#d0d7de] bg-white p-3 cursor-pointer hover:shadow-md transition-shadow hover:border-brand-400"
+                              onClick={() =>
+                                (window.location.href = `/sprints/${sprint.id}`)
+                              }
                             >
                               <div className="flex items-start justify-between gap-2">
-                                <p className="line-clamp-2 text-sm font-semibold text-gray-900">
+                                <p className="line-clamp-2 text-sm font-semibold text-gray-900 hover:text-brand-600">
                                   {sprint.name}
                                 </p>
                                 {isSuperAdmin && sprint.status !== "CLOSED" ? (
                                   <button
                                     type="button"
-                                    onClick={() => startEditSprint(sprint)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      startEditSprint(sprint);
+                                    }}
                                     className="inline-flex items-center gap-1 rounded-md border border-[#d0d7de] px-2 py-1 text-[11px] font-semibold text-gray-700"
                                   >
                                     <Edit3 className="h-3 w-3" />

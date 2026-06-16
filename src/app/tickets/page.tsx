@@ -14,6 +14,7 @@ import type {
 } from "@/components/CreateTicketModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { SelectMenu } from "@/components/SelectMenu";
+import { SprintSelector } from "@/components/SprintSelector";
 import {
   IconContext,
   PlusIcon as Plus,
@@ -64,6 +65,13 @@ interface Ticket {
   project?: {
     id: string;
     name: string;
+  } | null;
+  sprint?: {
+    id: string;
+    name: string;
+    status: string;
+    startsAt: string;
+    endsAt: string;
   } | null;
 }
 
@@ -226,6 +234,11 @@ function TicketsPageContent() {
 
   const [priorityFilter, setPriorityFilter] = useState<string>("");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("");
+  const [sprintFilter, setSprintFilter] = useState<string>("__all__");
+  const [sprints, setSprints] = useState<
+    Array<{ id: string; name: string; status: string }>
+  >([]);
+  const [loadingSprints, setLoadingSprints] = useState(false);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
 
   useEffect(() => {
@@ -316,6 +329,39 @@ function TicketsPageContent() {
     }
   }, [user, activeTeamId]);
 
+  const fetchSprints = useCallback(async () => {
+    if (!user || user.role === "CLIENT") {
+      setSprints([]);
+      return;
+    }
+
+    if (!activeTeamId || (user.role === "SUPER_ADMIN" && isAllTeams)) {
+      setSprints([]);
+      return;
+    }
+
+    try {
+      setLoadingSprints(true);
+      const response = await fetch(`/api/sprints?teamId=${activeTeamId}`);
+      if (!response.ok) {
+        setSprints([]);
+        return;
+      }
+
+      const data = (await response.json()) as Array<{
+        id: string;
+        name: string;
+        status: string;
+      }>;
+
+      setSprints(Array.isArray(data) ? data : []);
+    } catch {
+      setSprints([]);
+    } finally {
+      setLoadingSprints(false);
+    }
+  }, [user, activeTeamId, isAllTeams]);
+
   const fetchTickets = useCallback(async () => {
     if (!user) return;
     if (user.role === "CLIENT") {
@@ -333,6 +379,11 @@ function TicketsPageContent() {
       }
       if (assigneeFilter) {
         params.append("assigneeId", assigneeFilter);
+      }
+      if (sprintFilter === "backlog") {
+        params.append("sprintId", "backlog");
+      } else if (sprintFilter && sprintFilter !== "__all__") {
+        params.append("sprintId", sprintFilter);
       }
       if (user.role === "USER") {
         if (!activeTeamId) {
@@ -364,6 +415,7 @@ function TicketsPageContent() {
     statusFilter,
     priorityFilter,
     assigneeFilter,
+    sprintFilter,
     user,
     activeTeamId,
     isAllTeams,
@@ -398,6 +450,7 @@ function TicketsPageContent() {
     statusFilter,
     priorityFilter,
     assigneeFilter,
+    sprintFilter,
     activeTeamId,
     isAllTeams,
   ]);
@@ -542,6 +595,17 @@ function TicketsPageContent() {
     if (!user || user.role === "CLIENT") return;
     void fetchAssignableUsers();
   }, [user, activeTeamId, isAllTeams, fetchAssignableUsers]);
+
+  useEffect(() => {
+    if (!user || user.role === "CLIENT") return;
+    void fetchSprints();
+  }, [user, activeTeamId, isAllTeams, fetchSprints]);
+
+  useEffect(() => {
+    if (sprintFilter === "__all__" || sprintFilter === "backlog") return;
+    if (sprints.some((sprint) => sprint.id === sprintFilter)) return;
+    setSprintFilter("__all__");
+  }, [sprints, sprintFilter]);
 
   const handleCreateTicket = useCallback(
     async (ticketData: CreateTicketPayload) => {
@@ -702,9 +766,19 @@ function TicketsPageContent() {
   const filteredTickets = tickets.filter(
     (ticket) =>
       ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.sprint?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.client?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.assignee?.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+
+  const sprintFilterOptions = [
+    { value: "__all__", label: "All sprints" },
+    { value: "backlog", label: "Backlog only" },
+    ...sprints.map((sprint) => ({
+      value: sprint.id,
+      label: `${sprint.name} (${sprint.status})`,
+    })),
+  ];
 
   const totalPages = Math.max(1, Math.ceil(filteredTickets.length / pageSize));
   const pagedTickets = filteredTickets.slice(
@@ -835,6 +909,24 @@ function TicketsPageContent() {
                     })),
                   ]}
                   className="min-w-[170px]"
+                  triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
+                />
+                <SelectMenu
+                  value={sprintFilter}
+                  onChange={setSprintFilter}
+                  disabled={
+                    loadingSprints ||
+                    (user.role === "SUPER_ADMIN" && isAllTeams)
+                  }
+                  options={sprintFilterOptions}
+                  className="min-w-[170px]"
+                  placeholder={
+                    user.role === "SUPER_ADMIN" && isAllTeams
+                      ? "Select team for sprints"
+                      : loadingSprints
+                        ? "Loading sprints..."
+                        : "Sprint"
+                  }
                   triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
                 />
               </div>
@@ -979,6 +1071,30 @@ function TicketsPageContent() {
                           <ListTodo className="w-4 h-4" />
                           <span>{ticket.project?.name || "No project"}</span>
                         </div>
+
+                        {ticket.sprint ? (
+                          <div className="flex items-center space-x-2 text-sm text-gray-400">
+                            <Calendar className="w-4 h-4" />
+                            <span>{ticket.sprint.name}</span>
+                          </div>
+                        ) : null}
+
+                        {ticket.team?.id || (!isAllTeams && activeTeamId) ? (
+                          <div
+                            className="w-full"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <SprintSelector
+                              ticketId={ticket.id}
+                              currentSprintId={ticket.sprint?.id}
+                              currentSprintName={ticket.sprint?.name}
+                              teamId={ticket.team?.id || activeTeamId}
+                              onSprintChange={() => {
+                                void fetchTickets();
+                              }}
+                            />
+                          </div>
+                        ) : null}
 
                         <div className="flex items-center space-x-2 text-sm text-gray-400">
                           <User className="w-4 h-4" />

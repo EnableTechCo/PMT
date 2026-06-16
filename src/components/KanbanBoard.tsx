@@ -32,6 +32,7 @@ import {
   Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SprintSelector } from "@/components/SprintSelector";
 
 interface Ticket {
   id: string;
@@ -69,6 +70,13 @@ interface Ticket {
       email: string;
     } | null;
   } | null;
+  sprint?: {
+    id: string;
+    name: string;
+    status: string;
+    startsAt: string;
+    endsAt: string;
+  } | null;
 }
 
 function ticketDisplayId(ticket: Ticket): string {
@@ -84,6 +92,8 @@ interface KanbanBoardProps {
   onTicketClick: (ticket: Ticket) => void;
   userRole: string;
   onCreateTicket: () => void;
+  activeTeamId?: string;
+  onTicketSprintChange?: () => void;
 }
 
 const statusConfig = {
@@ -182,11 +192,16 @@ function getPriorityDisplay(priority?: string | null) {
 function SortableTicket({
   ticket,
   onClick,
+  activeTeamId,
+  onTicketSprintChange,
 }: {
   ticket: Ticket;
   onClick: () => void;
+  activeTeamId?: string;
+  onTicketSprintChange?: () => void;
 }) {
   const priority = getPriorityDisplay(ticket.priority);
+  const effectiveTeamId = ticket.team?.id || activeTeamId;
 
   const {
     attributes,
@@ -264,11 +279,31 @@ function SortableTicket({
               {priority.label}
             </span>
           </div>
+          {ticket.sprint ? (
+            <div className="flex items-center gap-2">
+              <div className="text-xs bg-brand-500/15 text-brand-700 dark:text-brand-300 px-2 py-0.5 rounded font-medium truncate flex-1">
+                {ticket.sprint.name}
+              </div>
+            </div>
+          ) : null}
+          {effectiveTeamId ? (
+            <div className="text-xs" onClick={(e) => e.stopPropagation()}>
+              <SprintSelector
+                ticketId={ticket.id}
+                currentSprintId={ticket.sprint?.id}
+                currentSprintName={ticket.sprint?.name}
+                teamId={effectiveTeamId}
+                onSprintChange={() => {
+                  onTicketSprintChange?.();
+                }}
+              />
+            </div>
+          ) : null}
           <div className="flex items-center justify-between gap-2">
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-gray-500 truncate">
               {ticket.assignee?.name || "No assignee"}
             </div>
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-gray-500 shrink-0">
               {new Date(ticket.createdAt).toLocaleDateString()}
             </div>
           </div>
@@ -348,6 +383,8 @@ export default function KanbanBoard({
   onTicketClick,
   userRole,
   onCreateTicket,
+  activeTeamId,
+  onTicketSprintChange,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const boardScrollRef = useRef<HTMLDivElement>(null);
@@ -486,6 +523,8 @@ export default function KanbanBoard({
                         key={ticket.id}
                         ticket={ticket}
                         onClick={() => onTicketClick(ticket)}
+                        activeTeamId={activeTeamId}
+                        onTicketSprintChange={onTicketSprintChange}
                       />
                     ))}
                   </SortableContext>
