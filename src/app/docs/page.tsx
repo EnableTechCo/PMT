@@ -407,9 +407,11 @@ export default function DocsPage() {
                   </summary>
                   <div className="pb-2 space-y-3">
                     <div>
-                      <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-[#57606a]">
-                        Team documents
-                      </p>
+                      <div className="flex flex-col justify-center">
+                        <p className="px-2 py-3 text-[14px] bg-gray-600 font-semibold uppercase tracking-wide text-white border border-[#d8dee4] rounded-tl-md rounded-tr-md">
+                          Team Documents
+                        </p>
+                      </div>
                       {filteredAuthoredDocs.length ? (
                         filteredAuthoredDocs.map((item) => (
                           <button
@@ -436,10 +438,16 @@ export default function DocsPage() {
                       )}
                     </div>
 
+                    {/* Horizontal line */}
+                    <div className="border-t border-[#d8dee4] my-4"></div>
+
                     <div>
-                      <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-[#57606a]">
-                        Repository READMEs
-                      </p>
+                      <div className="flex flex-col justify-center">
+                        <p className="px-2 py-3 text-[14px] bg-gray-600 font-semibold uppercase tracking-wide text-white border border-[#d8dee4] rounded-tl-md rounded-tr-md">
+                          Repository READMEs
+                        </p>
+                      </div>
+
                       {filteredRepoReadmes.length ? (
                         filteredRepoReadmes.map((item) => (
                           <button

@@ -94,6 +94,27 @@ async function fetchRepoReadmeHtml(
   }
 }
 
+async function fetchOrgRepos(
+  github: NonNullable<Awaited<ReturnType<typeof getGithubClient>>>,
+  org: string,
+) {
+  const repos = await github.octokit.paginate("GET /orgs/{org}/repos", {
+    org,
+    per_page: 100,
+    type: "all",
+    sort: "updated",
+    direction: "desc",
+  });
+
+  return repos.map((repo: any) => ({
+    id: repo.id,
+    owner: repo.owner?.login || org,
+    name: repo.name,
+    url: repo.html_url,
+    updatedAt: repo.updated_at ?? null,
+  }));
+}
+
 export async function GET(request: NextRequest) {
   try {
     const sessionUser = await getUserFromRequest(request);
@@ -139,46 +160,11 @@ export async function GET(request: NextRequest) {
       docs = await hydrateDocuments(baseDocs as any[]);
     }
 
-    const projectWhere =
-      allowedTeamIds && allowedTeamIds.length > 0
-        ? { teamId: { in: allowedTeamIds } }
-        : teamId
-          ? { teamId }
-          : {};
-
-    const projects = await db.project.findMany({
-      where: projectWhere,
-      select: {
-        id: true,
-        name: true,
-        teamId: true,
-      },
-    });
-
-    const repos = projects.length
-      ? await db.githubRepo.findMany({
-          where: {
-            projectId: { in: projects.map((project: any) => project.id) },
-          },
-          select: {
-            id: true,
-            owner: true,
-            name: true,
-            url: true,
-            projectId: true,
-          },
-        })
-      : [];
-
-    const projectById = new Map(
-      (projects as any[]).map((project) => [project.id, project]),
-    );
-
     const github = await getGithubClient(sessionUser.id);
+    const githubOrg = process.env.GITHUB_ORG?.trim() || "EnableTechCo";
     const repoReadmes = github
       ? await Promise.all(
-          (repos as any[]).map(async (repo) => {
-            const project = projectById.get(repo.projectId) ?? null;
+          (await fetchOrgRepos(github, githubOrg)).map(async (repo) => {
             const readmeHtml = await fetchRepoReadmeHtml(
               github,
               repo.owner,
@@ -195,15 +181,13 @@ export async function GET(request: NextRequest) {
               id: `repo:${repo.owner}/${repo.name}`,
               kind: "repo-readme",
               title: `${repo.owner}/${repo.name}`,
-              summary: project
-                ? `README from ${project.name}`
-                : "Repository README",
+              summary: `README from ${githubOrg}`,
               contentHtml: readmeHtml,
-              updatedAt: null,
+              updatedAt: repo.updatedAt,
               owner: repo.owner,
               repo: repo.name,
               url: repo.url,
-              project: project ? { id: project.id, name: project.name } : null,
+              project: null,
             };
           }),
         )
