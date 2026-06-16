@@ -16,10 +16,10 @@ jobs:
     steps:
       - name: Trigger backup snapshot
         env:
-          BACKUP_ENDPOINT_URL: ${{ secrets.BACKUP_ENDPOINT_URL }}
-          APP_URL: ${{ secrets.APP_URL }}
-          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
-          BACKUP_SCHEDULE_SECRET: ${{ secrets.BACKUP_SCHEDULE_SECRET }}
+          BACKUP_ENDPOINT_URL: ${{ secrets.BACKUP_ENDPOINT_URL || vars.BACKUP_ENDPOINT_URL }}
+          APP_URL: ${{ secrets.APP_URL || vars.APP_URL }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL || vars.NEXT_PUBLIC_APP_URL }}
+          BACKUP_SCHEDULE_SECRET: ${{ secrets.BACKUP_SCHEDULE_SECRET || vars.BACKUP_SCHEDULE_SECRET }}
         run: |
           ENDPOINT_URL="$BACKUP_ENDPOINT_URL"
 
