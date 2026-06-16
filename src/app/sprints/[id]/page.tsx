@@ -31,7 +31,7 @@ interface Ticket {
   id: string;
   title: string;
   status: string;
-  priority?: string;
+  priority?: string | null;
   createdAt: string;
   updatedAt: string;
   creator: {
@@ -148,7 +148,7 @@ export default function SprintDetailPage() {
     if (!user) return;
 
     const unsubscribe = onRealtimeChange((detail) => {
-      if (detail.table === "Ticket" || detail.table === "Sprint") {
+      if (detail.table === "Ticket") {
         void fetchSprint();
         void fetchTickets();
       }
@@ -451,9 +451,7 @@ export default function SprintDetailPage() {
         {showCreateModal && (
           <CreateTicketModal
             isOpen={showCreateModal}
-            onClose={() => setShowCreateModal(false)}
             defaultTeamId={sprint.teamId}
-            defaultSprintId={sprintId}
           />
         )}
       </div>
