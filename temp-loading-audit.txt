@@ -1,0 +1,447 @@
+﻿src\app\admin\invite\page.tsx:21:  const { teams, loading: teamsLoading } = useTeam();
+src\app\admin\invite\page.tsx:23:  const [loading, setLoading] = useState(false);
+src\app\admin\invite\page.tsx:42:    setLoading(true);
+src\app\admin\invite\page.tsx:63:      setLoading(false);
+src\app\admin\invite\page.tsx:133:          {teamsLoading && <SkeletonLine className="mt-2 h-3 w-28" />}
+src\app\admin\invite\page.tsx:144:            disabled={loading}
+src\app\admin\invite\page.tsx:147:            {loading ? "Sending..." : "Send invite"}
+src\components\CreateTicketModal.tsx:140:  const [isLoadingClients, setIsLoadingClients] = useState(false);
+src\components\CreateTicketModal.tsx:141:  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+src\components\CreateTicketModal.tsx:142:  const [isLoadingAssignees, setIsLoadingAssignees] = useState(false);
+src\components\CreateTicketModal.tsx:144:  const [isLoadingSprints, setIsLoadingSprints] = useState(false);
+src\components\CreateTicketModal.tsx:225:      setIsLoadingSprints(false);
+src\components\CreateTicketModal.tsx:226:      setIsLoadingAssignees(false);
+src\components\CreateTicketModal.tsx:227:      setIsLoadingProjects(false);
+src\components\CreateTicketModal.tsx:235:      setIsLoadingSprints(true);
+src\components\CreateTicketModal.tsx:236:      setIsLoadingAssignees(true);
+src\components\CreateTicketModal.tsx:237:      setIsLoadingProjects(true);
+src\components\CreateTicketModal.tsx:286:        setIsLoadingSprints(false);
+src\components\CreateTicketModal.tsx:287:        setIsLoadingAssignees(false);
+src\components\CreateTicketModal.tsx:288:        setIsLoadingProjects(false);
+src\components\CreateTicketModal.tsx:300:    setIsLoadingClients(true);
+src\components\CreateTicketModal.tsx:312:      setIsLoadingClients(false);
+src\components\CreateTicketModal.tsx:562:              {isLoadingAssignees ? (
+src\components\CreateTicketModal.tsx:580:                  disabled={isLoadingAssignees}
+src\components\CreateTicketModal.tsx:601:                disabled={!teamIdValue || isLoadingSprints}
+src\components\CreateTicketModal.tsx:619:              {isLoadingSprints ? (
+src\components\CreateTicketModal.tsx:628:              {isLoadingClients ? (
+src\components\CreateTicketModal.tsx:657:                  disabled={isLoadingClients || safeClients.length === 0}
+src\components\CreateTicketModal.tsx:672:              {isLoadingProjects ? (
+src\components\CreateTicketModal.tsx:680:                  disabled={!canSelectProject || isLoadingProjects}
+src\app\auth\invite\page.tsx:25:  const [loading, setLoading] = useState(false);
+src\app\auth\invite\page.tsx:94:    setLoading(true);
+src\app\auth\invite\page.tsx:126:      setLoading(false);
+src\app\auth\invite\page.tsx:325:                    disabled={loading}
+src\app\auth\invite\page.tsx:328:                      loading && "opacity-70 cursor-not-allowed",
+src\app\auth\invite\page.tsx:331:                    {loading ? (
+src\app\auth\reset-password\page.tsx:23:  const [loading, setLoading] = useState(false);
+src\app\auth\reset-password\page.tsx:58:    setLoading(true);
+src\app\auth\reset-password\page.tsx:81:      setLoading(false);
+src\app\auth\reset-password\page.tsx:303:                  disabled={loading}
+src\app\auth\reset-password\page.tsx:307:                    loading && "opacity-70 cursor-not-allowed",
+src\app\auth\reset-password\page.tsx:310:                  {loading && <Loader2 className="w-5 h-5 animate-spin" />}
+src\app\auth\reset-password\page.tsx:311:                  {loading ? "Resetting..." : "Reset Password"}
+src\app\auth\reset-password\page.tsx:348:              <p className="text-gray-300">Loading...</p>
+src\store\types.ts:11:export type LoadingStatus = "idle" | "loading" | "succeeded" | "failed";
+src\app\auth\login\page.tsx:13:  const [loading, setLoading] = useState(false);
+src\app\auth\login\page.tsx:61:    setLoading(true);
+src\app\auth\login\page.tsx:71:      setLoading(false);
+src\app\auth\login\page.tsx:137:                disabled={loading}
+src\app\auth\login\page.tsx:140:                  loading && "opacity-70 cursor-not-allowed",
+src\app\auth\login\page.tsx:143:                {loading ? (
+src\app\auth\forgot-password\page.tsx:17:  const [loading, setLoading] = useState(false);
+src\app\auth\forgot-password\page.tsx:24:    setLoading(true);
+src\app\auth\forgot-password\page.tsx:47:      setLoading(false);
+src\app\auth\forgot-password\page.tsx:168:                  disabled={loading}
+src\app\auth\forgot-password\page.tsx:172:                    loading && "opacity-70 cursor-not-allowed",
+src\app\auth\forgot-password\page.tsx:175:                  {loading && <Loader2 className="w-5 h-5 animate-spin" />}
+src\app\auth\forgot-password\page.tsx:176:                  {loading ? "Sending..." : "Send Reset Link"}
+src\app\workload\page.tsx:190:  const { user, loading: authLoading } = useAuth();
+src\app\workload\page.tsx:193:  const [loading, setLoading] = useState(true);
+src\app\workload\page.tsx:218:  const [githubOptionsLoading, setGithubOptionsLoading] = useState(false);
+src\app\workload\page.tsx:234:      setLoading(true);
+src\app\workload\page.tsx:263:      setLoading(false);
+src\app\workload\page.tsx:285:      setGithubOptionsLoading(true);
+src\app\workload\page.tsx:307:      setGithubOptionsLoading(false);
+src\app\workload\page.tsx:319:        setGithubOptionsLoading(true);
+src\app\workload\page.tsx:343:        setGithubOptionsLoading(false);
+src\app\workload\page.tsx:1042:                {githubOptionsLoading ? (
+src\app\workload\page.tsx:1132:        {loading ? (
+src\store\slices\resourceCacheSlice.ts:2:import type { LoadingStatus } from "@/store/types";
+src\store\slices\resourceCacheSlice.ts:6:  status: LoadingStatus;
+src\store\slices\resourceCacheSlice.ts:31:        status: "loading",
+src\store\slices\notificationsSlice.ts:3:import type { AppNotification, LoadingStatus } from "@/store/types";
+src\store\slices\notificationsSlice.ts:9:  status: LoadingStatus;
+src\store\slices\notificationsSlice.ts:38:      if (state.status === "loading") return false;
+src\store\slices\notificationsSlice.ts:85:        state.status = "loading";
+src\app\monitoring\page.tsx:78:  const { user, loading: authLoading } = useAuth();
+src\app\monitoring\page.tsx:80:  const [loading, setLoading] = useState(true);
+src\app\monitoring\page.tsx:90:    setLoading(true);
+src\app\monitoring\page.tsx:114:      setLoading(false);
+src\app\monitoring\page.tsx:119:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\monitoring\page.tsx:121:  }, [authLoading, user, loadOverview]);
+src\app\monitoring\page.tsx:184:  if (authLoading || !user) {
+src\app\monitoring\page.tsx:421:            {alerts.length === 0 && !loading ? (
+src\app\monitoring\page.tsx:427:            {loading ? (
+src\store\resourceRegistry.ts:8:// Inventory of loading/fetch resources discovered across src/**/*.{ts,tsx}.
+src\app\workflows\page.tsx:65:  const { user, loading: authLoading } = useAuth();
+src\app\workflows\page.tsx:74:  const [loadingRepos, setLoadingRepos] = useState(false);
+src\app\workflows\page.tsx:75:  const [loadingWorkflows, setLoadingWorkflows] = useState(false);
+src\app\workflows\page.tsx:124:    setLoadingRepos(true);
+src\app\workflows\page.tsx:147:      setLoadingRepos(false);
+src\app\workflows\page.tsx:154:    setLoadingWorkflows(true);
+src\app\workflows\page.tsx:176:      setLoadingWorkflows(false);
+src\app\workflows\page.tsx:181:    if (authLoading || !canManageWorkflows) return;
+src\app\workflows\page.tsx:183:  }, [authLoading, canManageWorkflows, loadRepos]);
+src\app\workflows\page.tsx:331:  if (authLoading || !user) {
+src\app\workflows\page.tsx:463:                disabled={loadingRepos || repos.length === 0}
+src\app\workflows\page.tsx:522:              disabled={loadingWorkflows || !owner || !repo}
+src\app\workflows\page.tsx:524:              {loadingWorkflows ? "Loading..." : "Refresh Workflows"}
+src\app\workflows\page.tsx:562:          {loadingWorkflows ? (
+src\app\monitoring\alerts\page.tsx:69:  const { user, loading: authLoading } = useAuth();
+src\app\monitoring\alerts\page.tsx:72:  const [loading, setLoading] = useState(true);
+src\app\monitoring\alerts\page.tsx:77:    setLoading(true);
+src\app\monitoring\alerts\page.tsx:108:      setLoading(false);
+src\app\monitoring\alerts\page.tsx:113:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\monitoring\alerts\page.tsx:115:  }, [authLoading, user, loadData]);
+src\app\monitoring\alerts\page.tsx:137:  if (authLoading || !user) {
+src\app\monitoring\alerts\page.tsx:244:            {loading ? (
+src\app\feedback\page.tsx:34:  const { user, loading: authLoading } = useAuth();
+src\app\feedback\page.tsx:37:  const [loading, setLoading] = useState(true);
+src\app\feedback\page.tsx:40:  const [savingId, setSavingId] = useState<string | null>(null);
+src\app\feedback\page.tsx:45:    setLoading(true);
+src\app\feedback\page.tsx:67:      setLoading(false);
+src\app\feedback\page.tsx:72:    if (!authLoading && user) {
+src\app\feedback\page.tsx:75:  }, [authLoading, user, load]);
+src\app\feedback\page.tsx:89:    setSavingId(feedbackId);
+src\app\feedback\page.tsx:101:      setSavingId(null);
+src\app\feedback\page.tsx:105:  if (authLoading) {
+src\app\feedback\page.tsx:148:        {loading ? (
+src\app\tickets\page.tsx:212:    loading: teamLoading,
+src\app\tickets\page.tsx:215:  const [loading, setLoading] = useState(true);
+src\app\tickets\page.tsx:242:  const [loadingSprints, setLoadingSprints] = useState(false);
+src\app\tickets\page.tsx:345:      setLoadingSprints(true);
+src\app\tickets\page.tsx:362:      setLoadingSprints(false);
+src\app\tickets\page.tsx:369:      setLoading(false);
+src\app\tickets\page.tsx:392:          setLoading(false);
+src\app\tickets\page.tsx:413:      setLoading(false);
+src\app\tickets\page.tsx:864:                    teamLoading || teams.length === 0 || user.role === "CLIENT"
+src\app\tickets\page.tsx:913:                    loadingSprints ||
+src\app\tickets\page.tsx:925:                {loadingSprints ? (
+src\app\tickets\page.tsx:940:          {loading ? (
+src\app\executive\page.tsx:132:  const { user, loading: authLoading } = useAuth();
+src\app\executive\page.tsx:164:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\executive\page.tsx:166:  }, [authLoading, user, loadExecutiveData]);
+src\app\executive\page.tsx:221:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\executive\page.tsx:239:  }, [authLoading, user, loadExecutiveData]);
+src\app\executive\page.tsx:242:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\executive\page.tsx:261:  }, [authLoading, user, loadExecutiveData]);
+src\app\executive\page.tsx:445:  if (authLoading || !user) {
+src\contexts\TeamContext.tsx:30:  loading: boolean;
+src\contexts\TeamContext.tsx:41:  const { user, loading: authLoading } = useAuth();
+src\contexts\TeamContext.tsx:45:  const [loading, setLoading] = useState(true);
+src\contexts\TeamContext.tsx:63:      setLoading(false);
+src\contexts\TeamContext.tsx:82:      setLoading(false);
+src\contexts\TeamContext.tsx:87:    if (authLoading) return;
+src\contexts\TeamContext.tsx:92:      setLoading(false);
+src\contexts\TeamContext.tsx:99:      setLoading(false);
+src\contexts\TeamContext.tsx:102:    setLoading(true);
+src\contexts\TeamContext.tsx:104:  }, [authLoading, user, refreshTeams]);
+src\contexts\TeamContext.tsx:107:    if (authLoading || !user || user.role === "CLIENT") return;
+src\contexts\TeamContext.tsx:140:  }, [authLoading, user, teams]);
+src\contexts\TeamContext.tsx:143:    if (authLoading || !user || user.role === "CLIENT") return;
+src\contexts\TeamContext.tsx:151:  }, [authLoading, user, refreshTeams]);
+src\contexts\TeamContext.tsx:181:      loading,
+src\contexts\TeamContext.tsx:190:      loading,
+src\app\docs\[id]\page.tsx:31:  const [saving, setSaving] = useState(false);
+src\app\docs\[id]\page.tsx:55:    setSaving(true);
+src\app\docs\[id]\page.tsx:68:      setSaving(false);
+src\app\docs\[id]\page.tsx:127:              {saving ? "Saving..." : "Save"}
+src\app\docs\page.tsx:77:  const [loading, setLoading] = useState(true);
+src\app\docs\page.tsx:116:      setLoading(false);
+src\app\docs\page.tsx:129:        setLoading(true);
+src\app\docs\page.tsx:182:      setLoading(false);
+src\app\docs\page.tsx:571:            {!loading && selectedItem ? (
+src\components\DashboardHeader.tsx:10:  teamListLoading: boolean;
+src\components\DashboardHeader.tsx:19:  teamListLoading,
+src\components\DashboardHeader.tsx:26:      {user.role === "USER" && teams.length === 0 && !teamListLoading && (
+src\components\DashboardLayout.tsx:391:  loading,
+src\components\DashboardLayout.tsx:398:  loading: boolean;
+src\components\DashboardLayout.tsx:444:        {loading ? (
+src\components\DashboardLayout.tsx:614:    loading: teamNavLoading,
+src\components\DashboardLayout.tsx:956:                    {teamNavLoading ? (
+src\components\DashboardLayout.tsx:1231:                    {teamNavLoading ? (
+src\components\DashboardLayout.tsx:1457:                      loading={notificationsStatus === "loading"}
+src\app\projects\[id]\page.tsx:61:  const { user, loading: authLoading } = useAuth();
+src\app\projects\[id]\page.tsx:72:  const [loadingClients, setLoadingClients] = useState(false);
+src\app\projects\[id]\page.tsx:82:  const [loadingGithubRepos, setLoadingGithubRepos] = useState(false);
+src\app\projects\[id]\page.tsx:83:  const [savingGithubRepos, setSavingGithubRepos] = useState(false);
+src\app\projects\[id]\page.tsx:95:    if (authLoading || !user || user.role === "CLIENT") return;
+src\app\projects\[id]\page.tsx:105:  }, [authLoading, user, id]);
+src\app\projects\[id]\page.tsx:108:    if (authLoading || !user || user.role === "CLIENT" || !project) return;
+src\app\projects\[id]\page.tsx:118:  }, [authLoading, user, project, projectTicketsUrl]);
+src\app\projects\[id]\page.tsx:121:    if (authLoading || !user || user.role === "CLIENT") return;
+src\app\projects\[id]\page.tsx:152:  }, [authLoading, user, id, projectTicketsUrl]);
+src\app\projects\[id]\page.tsx:155:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\projects\[id]\page.tsx:158:      setLoadingClients(true);
+src\app\projects\[id]\page.tsx:169:        setLoadingClients(false);
+src\app\projects\[id]\page.tsx:172:  }, [authLoading, user]);
+src\app\projects\[id]\page.tsx:320:    setLoadingGithubRepos(true);
+src\app\projects\[id]\page.tsx:361:      setLoadingGithubRepos(false);
+src\app\projects\[id]\page.tsx:377:    setSavingGithubRepos(true);
+src\app\projects\[id]\page.tsx:414:      setSavingGithubRepos(false);
+src\app\projects\[id]\page.tsx:418:  if (authLoading || !user) {
+src\app\projects\[id]\page.tsx:437:        <p className="text-gray-600">{pageError || "Loading..."}</p>
+src\app\projects\[id]\page.tsx:616:                  {loadingClients ? (
+src\app\projects\[id]\page.tsx:617:                    <p className="text-xs text-gray-500">Loading clients...</p>
+src\app\projects\[id]\page.tsx:621:                    disabled={assigningClient || loadingClients}
+src\app\projects\[id]\page.tsx:624:                    {assigningClient ? "Saving..." : "Save Client Assignment"}
+src\app\projects\[id]\page.tsx:731:              {loadingGithubRepos ? (
+src\app\projects\[id]\page.tsx:758:              {!loadingGithubRepos &&
+src\app\projects\[id]\page.tsx:786:                    disabled={savingGithubRepos || loadingGithubRepos}
+src\app\projects\[id]\page.tsx:789:                    {savingGithubRepos ? "Saving..." : "Save Repo"}
+src\app\projects\page.tsx:34:  const { user, loading: authLoading } = useAuth();
+src\app\projects\page.tsx:39:    loading: teamLoading,
+src\app\projects\page.tsx:42:  const [loading, setLoading] = useState(true);
+src\app\projects\page.tsx:47:  const [loadingClients, setLoadingClients] = useState(false);
+src\app\projects\page.tsx:58:    setLoadingClients(true);
+src\app\projects\page.tsx:69:      setLoadingClients(false);
+src\app\projects\page.tsx:88:    setLoading(true);
+src\app\projects\page.tsx:94:          setLoading(false);
+src\app\projects\page.tsx:113:      setLoading(false);
+src\app\projects\page.tsx:158:    if (authLoading || !user || user.role === "CLIENT") return;
+src\app\projects\page.tsx:160:  }, [authLoading, user, load]);
+src\app\projects\page.tsx:163:    if (authLoading || !user || user.role === "CLIENT") return;
+src\app\projects\page.tsx:180:  }, [authLoading, user, load]);
+src\app\projects\page.tsx:182:  if (authLoading || !user) {
+src\app\projects\page.tsx:201:  const isInitialLoading = loading && projects.length === 0;
+src\app\projects\page.tsx:237:                disabled={teamLoading || teams.length === 0}
+src\app\projects\page.tsx:248:                {teamLoading ? "Loading teamΓÇª" : activeTeamName || "My team"}
+src\app\projects\page.tsx:254:        {user.role === "USER" && teams.length === 0 && !teamLoading && (
+src\app\projects\page.tsx:266:        {isInitialLoading ? (
+src\app\projects\page.tsx:272:            {loading && projects.length > 0 && (
+src\app\projects\page.tsx:327:        {!loading && projects.length === 0 && !error && (
+src\app\projects\page.tsx:417:                  {loadingClients && (
+src\app\projects\page.tsx:419:                      Loading clientsΓÇª
+src\app\dashboard\page.tsx:171:  const { user, loading: authLoading } = useAuth();
+src\app\dashboard\page.tsx:178:    loading: teamListLoading,
+src\app\dashboard\page.tsx:182:  const [loading, setLoading] = useState(true);
+src\app\dashboard\page.tsx:190:  const [loadingSprints, setLoadingSprints] = useState(false);
+src\app\dashboard\page.tsx:244:      setLoadingSprints(true);
+src\app\dashboard\page.tsx:255:      setLoadingSprints(false);
+src\app\dashboard\page.tsx:267:      setLoading(true);
+src\app\dashboard\page.tsx:288:          setLoading(false);
+src\app\dashboard\page.tsx:311:      setLoading(false);
+src\app\dashboard\page.tsx:499:  if (authLoading) {
+src\app\dashboard\page.tsx:601:              disabled={teamListLoading}
+src\app\dashboard\page.tsx:618:            {loadingSprints ? (
+src\app\dashboard\page.tsx:624:                disabled={loadingSprints}
+src\app\dashboard\page.tsx:640:          {loading ? (
+src\app\dashboard\page.tsx:678:          teamListLoading={teamListLoading}
+src\app\dashboard\page.tsx:732:                      disabled={teamListLoading || teams.length === 0}
+src\app\dashboard\page.tsx:761:                  {loadingSprints ? (
+src\app\dashboard\page.tsx:767:                      disabled={loadingSprints}
+src\app\dashboard\page.tsx:778:            {loading ? (
+src\app\dashboard\page.tsx:824:                      disabled={teamListLoading || teams.length === 0}
+src\app\dashboard\page.tsx:853:                  {loadingSprints ? (
+src\app\dashboard\page.tsx:859:                      disabled={loadingSprints}
+src\app\dashboard\page.tsx:870:            {loading ? (
+src\app\clients\page.tsx:56:  const [loading, setLoading] = useState(true);
+src\app\clients\page.tsx:64:  const [confirmLoading, setConfirmLoading] = useState(false);
+src\app\clients\page.tsx:68:  const [loadingClientProjects, setLoadingClientProjects] = useState(false);
+src\app\clients\page.tsx:92:  const [loadingGithubRepos, setLoadingGithubRepos] = useState(false);
+src\app\clients\page.tsx:120:      setLoading(false);
+src\app\clients\page.tsx:189:    setLoadingGithubRepos(true);
+src\app\clients\page.tsx:234:      setLoadingGithubRepos(false);
+src\app\clients\page.tsx:298:    setConfirmLoading(true);
+src\app\clients\page.tsx:319:      setConfirmLoading(false);
+src\app\clients\page.tsx:329:    setConfirmLoading(true);
+src\app\clients\page.tsx:346:      setConfirmLoading(false);
+src\app\clients\page.tsx:356:    setConfirmLoading(true);
+src\app\clients\page.tsx:374:      setConfirmLoading(false);
+src\app\clients\page.tsx:402:    setLoadingClientProjects(true);
+src\app\clients\page.tsx:418:      setLoadingClientProjects(false);
+src\app\clients\page.tsx:548:        {loading ? (
+src\app\clients\page.tsx:911:                    confirmLoading && "cursor-wait opacity-70",
+src\app\clients\page.tsx:914:                  {confirmLoading
+src\app\clients\page.tsx:1033:                  {loadingGithubRepos ? (
+src\app\clients\page.tsx:1214:                {loadingClientProjects ? (
+src\app\clients\page.tsx:1216:                    Loading projectsΓÇª
+src\app\settings\page.tsx:100:              Loading settings...
+src\app\settings\page.tsx:131:  const [notifLoading, setNotifLoading] = useState(false);
+src\app\settings\page.tsx:132:  const [notifSaving, setNotifSaving] = useState(false);
+src\app\settings\page.tsx:138:  const [connecting, setConnecting] = useState(false);
+src\app\settings\page.tsx:142:  const [checkingStatus, setCheckingStatus] = useState(true);
+src\app\settings\page.tsx:146:  const [testEmailLoading, setTestEmailLoading] = useState(false);
+src\app\settings\page.tsx:149:  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+src\app\settings\page.tsx:154:  const [superGithubLoading, setSuperGithubLoading] = useState(false);
+src\app\settings\page.tsx:156:  const [githubReposLoading, setGithubReposLoading] = useState(false);
+src\app\settings\page.tsx:165:  const [selectedRepoLoading, setSelectedRepoLoading] = useState(false);
+src\app\settings\page.tsx:167:  const [backupLoading, setBackupLoading] = useState(false);
+src\app\settings\page.tsx:168:  const [backupNowLoading, setBackupNowLoading] = useState(false);
+src\app\settings\page.tsx:177:  const [backupRecordsLoading, setBackupRecordsLoading] = useState(false);
+src\app\settings\page.tsx:217:      setNotifLoading(false);
+src\app\settings\page.tsx:221:    setNotifLoading(true);
+src\app\settings\page.tsx:246:      .finally(() => setNotifLoading(false));
+src\app\settings\page.tsx:251:    setNotifSaving(true);
+src\app\settings\page.tsx:272:      setNotifSaving(false);
+src\app\settings\page.tsx:323:    setTestEmailLoading(true);
+src\app\settings\page.tsx:367:      setTestEmailLoading(false);
+src\app\settings\page.tsx:372:    setDiagnosticLoading(true);
+src\app\settings\page.tsx:423:      setDiagnosticLoading(false);
+src\app\settings\page.tsx:428:    setGithubReposLoading(true);
+src\app\settings\page.tsx:472:      setGithubReposLoading(false);
+src\app\settings\page.tsx:485:      setSelectedRepoLoading(true);
+src\app\settings\page.tsx:537:        setSelectedRepoLoading(false);
+src\app\settings\page.tsx:544:    setCheckingStatus(true);
+src\app\settings\page.tsx:565:      setCheckingStatus(false);
+src\app\settings\page.tsx:780:                            checkingStatus || connecting || superGithubLoading
+src\app\settings\page.tsx:793:                          disabled={superGithubLoading || connecting}
+src\app\settings\page.tsx:796:                          {superGithubLoading ? (
+src\app\settings\page.tsx:884:                          disabled={githubReposLoading || connecting}
+src\app\settings\page.tsx:887:                          {githubReposLoading ? (
+src\app\settings\page.tsx:996:                          {selectedRepoLoading ? (
+src\app\settings\page.tsx:1067:                      ) : githubReposLoading ? (
+src\app\settings\page.tsx:1102:                                Connecting...
+src\app\settings\page.tsx:1197:                              Connecting...
+src\app\settings\page.tsx:1246:                {notifLoading ? (
+src\app\settings\page.tsx:1332:                    disabled={notifSaving || notifLoading}
+src\app\settings\page.tsx:1335:                    {notifSaving ? (
+src\app\settings\page.tsx:1338:                        Saving...
+src\app\settings\page.tsx:1389:                      disabled={testEmailLoading}
+src\app\settings\page.tsx:1392:                      {testEmailLoading ? "Sending..." : "Send test email"}
+src\app\settings\page.tsx:1400:                      disabled={diagnosticLoading}
+src\app\settings\page.tsx:1403:                      {diagnosticLoading
+src\app\settings\page.tsx:1404:                        ? "Checking..."
+src\app\settings\page.tsx:1453:                      disabled={backupRecordsLoading}
+src\app\settings\page.tsx:1456:                      {backupRecordsLoading ? (
+src\app\settings\page.tsx:1469:                      disabled={backupNowLoading}
+src\app\settings\page.tsx:1472:                      {backupNowLoading ? (
+src\app\settings\page.tsx:1485:                      disabled={backupLoading}
+src\app\settings\page.tsx:1488:                      {backupLoading ? (
+src\app\settings\page.tsx:1491:                          Creating backup...
+src\app\settings\page.tsx:1586:                    {backupRecordsLoading ? (
+src\app\settings\page.tsx:1744:    setConnecting(true);
+src\app\settings\page.tsx:1774:      setConnecting(false);
+src\app\settings\page.tsx:1779:    setConnecting(true);
+src\app\settings\page.tsx:1803:      setConnecting(false);
+src\app\settings\page.tsx:1810:    setSuperGithubLoading(true);
+src\app\settings\page.tsx:1839:      setSuperGithubLoading(false);
+src\app\settings\page.tsx:1850:    setBackupRecordsLoading(true);
+src\app\settings\page.tsx:1880:      setBackupRecordsLoading(false);
+src\app\settings\page.tsx:1923:    setBackupLoading(true);
+src\app\settings\page.tsx:1963:      setBackupLoading(false);
+src\app\settings\page.tsx:1968:    setBackupNowLoading(true);
+src\app\settings\page.tsx:1994:      setBackupNowLoading(false);
+src\contexts\AuthContext.tsx:20:  loading: boolean;
+src\contexts\AuthContext.tsx:30:  const [loading, setLoading] = useState(true);
+src\contexts\AuthContext.tsx:46:      setLoading(false);
+src\contexts\AuthContext.tsx:144:      value={{ user, loading, login, completePasswordlessLogin, logout }}
+src\app\client\dashboard\page.tsx:72:  const { user, loading: authLoading } = useAuth();
+src\app\client\dashboard\page.tsx:75:  const [loading, setLoading] = useState(true);
+src\app\client\dashboard\page.tsx:121:      setLoading(false);
+src\app\client\dashboard\page.tsx:137:  if (authLoading) {
+src\app\client\dashboard\page.tsx:244:          {loading ? (
+src\app\teams\[teamId]\page.tsx:33:  const { user, loading: authLoading } = useAuth();
+src\app\teams\[teamId]\page.tsx:37:  const [loading, setLoading] = useState(true);
+src\app\teams\[teamId]\page.tsx:51:  const [savingMember, setSavingMember] = useState(false);
+src\app\teams\[teamId]\page.tsx:83:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\teams\[teamId]\page.tsx:84:    setLoading(true);
+src\app\teams\[teamId]\page.tsx:88:      setLoading(false);
+src\app\teams\[teamId]\page.tsx:90:  }, [authLoading, user, loadTeamMeta, loadMembers]);
+src\app\teams\[teamId]\page.tsx:93:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\teams\[teamId]\page.tsx:102:  }, [authLoading, user, loadTeamMeta, loadMembers]);
+src\app\teams\[teamId]\page.tsx:257:    setSavingMember(true);
+src\app\teams\[teamId]\page.tsx:286:      setSavingMember(false);
+src\app\teams\[teamId]\page.tsx:290:  if (authLoading || !user) {
+src\app\teams\[teamId]\page.tsx:338:            {loading && !teamName ? "Team" : teamName || "Team"}
+src\app\teams\[teamId]\page.tsx:426:        {loading ? (
+src\app\teams\[teamId]\page.tsx:476:                          ? "Sending..."
+src\app\teams\[teamId]\page.tsx:550:                          {savingMember ? "Saving..." : "Save"}
+src\app\teams\page.tsx:12:  const { user, loading: authLoading } = useAuth();
+src\app\teams\page.tsx:24:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\teams\page.tsx:26:  }, [authLoading, user]);
+src\app\teams\page.tsx:29:    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+src\app\teams\page.tsx:37:  }, [authLoading, user]);
+src\app\teams\page.tsx:60:  if (authLoading || !user) {
+src\app\teams\page.tsx:110:            {busy ? "SavingΓÇª" : "Add team"}
+src\app\sprints\page.tsx:311:  const { user, loading: authLoading } = useAuth();
+src\app\sprints\page.tsx:314:  const [loading, setLoading] = useState(true);
+src\app\sprints\page.tsx:335:  const [savingEdit, setSavingEdit] = useState(false);
+src\app\sprints\page.tsx:367:      setLoading(false);
+src\app\sprints\page.tsx:372:      setLoading(true);
+src\app\sprints\page.tsx:413:      setLoading(false);
+src\app\sprints\page.tsx:418:    if (authLoading) return;
+src\app\sprints\page.tsx:420:  }, [authLoading, fetchSprints]);
+src\app\sprints\page.tsx:535:    setSavingEdit(true);
+src\app\sprints\page.tsx:563:      setSavingEdit(false);
+src\app\sprints\page.tsx:745:                {savingEdit ? "Saving..." : "Save sprint"}
+src\app\sprints\page.tsx:824:  if (authLoading) {
+src\app\sprints\page.tsx:923:            {loading ? (
+src\app\sprints\page.tsx:925:                Loading sprints...
+src\app\sprints\[id]\page.tsx:78:  const { user, loading: authLoading } = useAuth();
+src\app\sprints\[id]\page.tsx:83:  const [loading, setLoading] = useState(true);
+src\app\sprints\[id]\page.tsx:91:      setLoading(true);
+src\app\sprints\[id]\page.tsx:112:      setLoading(false);
+src\app\sprints\[id]\page.tsx:261:  if (authLoading || loading) {
+src\app\api\settings\test-email\route.ts:13:    console.log("Sending test email", {
+src\components\TicketWorkspace.tsx:104:  const { user, loading: authLoading } = useAuth();
+src\components\TicketWorkspace.tsx:106:  const [loading, setLoading] = useState(true);
+src\components\TicketWorkspace.tsx:108:  const [savingCount, setSavingCount] = useState(0);
+src\components\TicketWorkspace.tsx:109:  const [savingField, setSavingField] = useState<EditableField | null>(null);
+src\components\TicketWorkspace.tsx:114:  const [obligationsLoading, setObligationsLoading] = useState(false);
+src\components\TicketWorkspace.tsx:122:  const [_checkingGithub, setCheckingGithub] = useState(true);
+src\components\TicketWorkspace.tsx:155:  const [loadingRepos, setLoadingRepos] = useState(false);
+src\components\TicketWorkspace.tsx:156:  const [loadingBranches, setLoadingBranches] = useState(false);
+src\components\TicketWorkspace.tsx:157:  const [loadingPRs, setLoadingPRs] = useState(false);
+src\components\TicketWorkspace.tsx:159:  const [loadingAssignableUsers, setLoadingAssignableUsers] = useState(false);
+src\components\TicketWorkspace.tsx:161:  const [loadingSprints, setLoadingSprints] = useState(false);
+src\components\TicketWorkspace.tsx:174:    setLoading(true);
+src\components\TicketWorkspace.tsx:190:      setLoading(false);
+src\components\TicketWorkspace.tsx:196:      setCheckingGithub(true);
+src\components\TicketWorkspace.tsx:209:      setCheckingGithub(false);
+src\components\TicketWorkspace.tsx:215:      setObligationsLoading(true);
+src\components\TicketWorkspace.tsx:226:      setObligationsLoading(false);
+src\components\TicketWorkspace.tsx:231:    if (!authLoading && user) {
+src\components\TicketWorkspace.tsx:236:  }, [authLoading, user, load, loadObligations, checkGithubAuth]);
+src\components\TicketWorkspace.tsx:239:    if (authLoading || !user) return;
+src\components\TicketWorkspace.tsx:247:  }, [authLoading, user, load, loadObligations]);
+src\components\TicketWorkspace.tsx:250:    if (authLoading || !user || user.role === "CLIENT") return;
+src\components\TicketWorkspace.tsx:257:      setLoadingAssignableUsers(false);
+src\components\TicketWorkspace.tsx:258:      setLoadingSprints(false);
+src\components\TicketWorkspace.tsx:265:      setLoadingAssignableUsers(true);
+src\components\TicketWorkspace.tsx:266:      setLoadingSprints(true);
+src\components\TicketWorkspace.tsx:308:        setLoadingAssignableUsers(false);
+src\components\TicketWorkspace.tsx:309:        setLoadingSprints(false);
+src\components\TicketWorkspace.tsx:318:  }, [authLoading, user, ticket]);
+src\components\TicketWorkspace.tsx:321:    if (authLoading || !user || !githubConnected) {
+src\components\TicketWorkspace.tsx:457:  }, [authLoading, githubConnected, ticket, user]);
+src\components\TicketWorkspace.tsx:460:    setLoadingBranches(true);
+src\components\TicketWorkspace.tsx:471:      setLoadingBranches(false);
+src\components\TicketWorkspace.tsx:476:    setLoadingPRs(true);
+src\components\TicketWorkspace.tsx:487:      setLoadingPRs(false);
+src\components\TicketWorkspace.tsx:492:    setLoadingRepos(true);
+src\components\TicketWorkspace.tsx:504:      setLoadingRepos(false);
+src\components\TicketWorkspace.tsx:617:    setSavingCount((current) => current + 1);
+src\components\TicketWorkspace.tsx:618:    if (field) setSavingField(field);
+src\components\TicketWorkspace.tsx:690:      setSavingCount((current) => Math.max(0, current - 1));
+src\components\TicketWorkspace.tsx:692:        setSavingField((current) => (current === field ? null : current));
+src\components\TicketWorkspace.tsx:836:    if (!ticket || loading) return;
+src\components\TicketWorkspace.tsx:844:  }, [ticket, loading]);
+src\components\TicketWorkspace.tsx:846:  if (authLoading || !user) {
+src\components\TicketWorkspace.tsx:872:  if (loading) {
+src\components\TicketWorkspace.tsx:1343:              {obligationsLoading ? (
+src\components\TicketWorkspace.tsx:1779:                  {uploadBusy ? "UploadingΓÇª" : "+ Upload file"}
+src\components\TicketWorkspace.tsx:1994:                  {loadingAssignableUsers ? (
+src\components\TicketWorkspace.tsx:2027:                  {loadingSprints ? (
+src\components\TicketWorkspace.tsx:2035:                      <span className="text-xs text-gray-500">Saving...</span>
+src\components\TicketWorkspace.tsx:2085:                      <span className="text-xs text-gray-500">Saving...</span>
+src\components\TicketWorkspace.tsx:2131:              {saving && <p className="mt-2 text-xs text-gray-500">SavingΓÇª</p>}
+src\components\TicketWorkspace.tsx:2162:              {loadingBranches ? (
+src\components\TicketWorkspace.tsx:2226:              {loadingPRs ? (
+src\components\TicketWorkspace.tsx:2229:                  <span>Loading PRs from GitHub...</span>
+src\components\TicketWorkspace.tsx:2336:                {loadingRepos ? (
+src\components\SprintSelector.tsx:33:  const [loading, setLoading] = useState(false);
+src\components\SprintSelector.tsx:41:        setLoading(true);
+src\components\SprintSelector.tsx:54:        setLoading(false);
+src\components\SprintSelector.tsx:88:      {loading ? (

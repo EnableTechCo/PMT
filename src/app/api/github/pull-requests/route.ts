@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
       select: {
         id: true,
         title: true,
+        status: true,
         creatorId: true,
         assigneeId: true,
       },
@@ -166,7 +167,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (state === "open") {
+    const shouldMoveToInReview =
+      state === "open" &&
+      ticket.status !== TicketStatus.IN_REVIEW &&
+      ticket.status !== TicketStatus.COMPLETE;
+
+    if (shouldMoveToInReview) {
       await db.ticket.update({
         where: { id: resolvedTicketId },
         data: { status: TicketStatus.IN_REVIEW },
@@ -189,7 +195,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (state === "open") {
+    if (shouldMoveToInReview) {
       const targets = new Set<string>();
       if (ticket.creatorId) targets.add(ticket.creatorId);
       if (ticket.assigneeId) targets.add(ticket.assigneeId);

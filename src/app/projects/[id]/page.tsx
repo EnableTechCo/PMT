@@ -8,6 +8,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { SelectMenu } from "@/components/SelectMenu";
 import { onRealtimeChange } from "@/lib/realtime-events";
+import { SkeletonLine } from "@/components/ui/Skeleton";
 
 type Milestone = {
   id: string;
@@ -728,7 +729,10 @@ export default function ProjectDetailPage() {
 
             <div className="mt-4 space-y-3">
               {loadingGithubRepos ? (
-                <p className="text-sm text-gray-500">Loading repositories...</p>
+                <div className="space-y-2">
+                  <SkeletonLine className="h-9 w-full" />
+                  <SkeletonLine className="h-9 w-5/6" />
+                </div>
               ) : (
                 <SelectMenu
                   value={selectedGithubRepoUrl}

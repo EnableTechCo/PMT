@@ -33,6 +33,8 @@ import {
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
+import { SkeletonDropdown, SkeletonTicketCard } from "@/components/ui/Skeleton";
+import { cachedGetJson } from "@/store/cacheClient";
 
 interface Ticket {
   id: string;
@@ -268,158 +270,167 @@ function TicketsPageContent() {
     hasAppliedQueryRef.current = true;
   }, [searchParams, user, setActiveTeamId, setAllTeamsMode]);
 
-  const fetchAssignableUsers = useCallback(async () => {
-    if (!user || user.role === "CLIENT") {
-      setAssignableUsers([]);
-      return;
-    }
+  const fetchAssignableUsers = useCallback(
+    async (force = false) => {
+      if (!user || user.role === "CLIENT") {
+        setAssignableUsers([]);
+        return;
+      }
 
-    try {
-      if (user.role === "SUPER_ADMIN") {
-        const response = await fetch("/api/workload/users");
-        if (!response.ok) {
+      try {
+        if (user.role === "SUPER_ADMIN") {
+          const data = await cachedGetJson<AssignableUser[]>({
+            key: "tickets_assignable_users:super_admin",
+            url: "/api/workload/users",
+            staleMs: 120_000,
+            force,
+          });
+          const users = Array.isArray(data) ? data : [];
+          setAssignableUsers(
+            users.filter(
+              (candidate) =>
+                !EXCLUDED_ASSIGNEE_EMAILS.has(
+                  candidate.email.trim().toLowerCase(),
+                ),
+            ),
+          );
+          return;
+        }
+
+        if (!activeTeamId) {
           setAssignableUsers([]);
           return;
         }
-        const data = (await response.json()) as AssignableUser[];
-        const users = Array.isArray(data) ? data : [];
+
+        const body = await cachedGetJson<{
+          members?: Array<{ userId: string; name: string; email: string }>;
+        }>({
+          key: `tickets_assignable_users:team:${activeTeamId}`,
+          url: `/api/teams/${activeTeamId}/members`,
+          staleMs: 120_000,
+          force,
+        });
+        const members = Array.isArray(body.members) ? body.members : [];
+
         setAssignableUsers(
-          users.filter(
-            (candidate) =>
-              !EXCLUDED_ASSIGNEE_EMAILS.has(
-                candidate.email.trim().toLowerCase(),
-              ),
-          ),
+          members
+            .map((member) => ({
+              id: member.userId,
+              name: member.name,
+              email: member.email,
+            }))
+            .filter(
+              (candidate) =>
+                !EXCLUDED_ASSIGNEE_EMAILS.has(
+                  candidate.email.trim().toLowerCase(),
+                ),
+            ),
         );
-        return;
-      }
-
-      if (!activeTeamId) {
+      } catch {
         setAssignableUsers([]);
-        return;
       }
+    },
+    [user, activeTeamId],
+  );
 
-      const response = await fetch(`/api/teams/${activeTeamId}/members`);
-      if (!response.ok) {
-        setAssignableUsers([]);
-        return;
-      }
-
-      const body = (await response.json()) as {
-        members?: Array<{ userId: string; name: string; email: string }>;
-      };
-      const members = Array.isArray(body.members) ? body.members : [];
-
-      setAssignableUsers(
-        members
-          .map((member) => ({
-            id: member.userId,
-            name: member.name,
-            email: member.email,
-          }))
-          .filter(
-            (candidate) =>
-              !EXCLUDED_ASSIGNEE_EMAILS.has(
-                candidate.email.trim().toLowerCase(),
-              ),
-          ),
-      );
-    } catch {
-      setAssignableUsers([]);
-    }
-  }, [user, activeTeamId]);
-
-  const fetchSprints = useCallback(async () => {
-    if (!user || user.role === "CLIENT") {
-      setSprints([]);
-      return;
-    }
-
-    if (!activeTeamId || (user.role === "SUPER_ADMIN" && isAllTeams)) {
-      setSprints([]);
-      return;
-    }
-
-    try {
-      setLoadingSprints(true);
-      const response = await fetch(`/api/sprints?teamId=${activeTeamId}`);
-      if (!response.ok) {
+  const fetchSprints = useCallback(
+    async (force = false) => {
+      if (!user || user.role === "CLIENT") {
         setSprints([]);
         return;
       }
 
-      const data = (await response.json()) as Array<{
-        id: string;
-        name: string;
-        status: string;
-      }>;
+      if (!activeTeamId || (user.role === "SUPER_ADMIN" && isAllTeams)) {
+        setSprints([]);
+        return;
+      }
 
-      setSprints(Array.isArray(data) ? data : []);
-    } catch {
-      setSprints([]);
-    } finally {
-      setLoadingSprints(false);
-    }
-  }, [user, activeTeamId, isAllTeams]);
+      try {
+        setLoadingSprints(true);
+        const data = await cachedGetJson<
+          Array<{
+            id: string;
+            name: string;
+            status: string;
+          }>
+        >({
+          key: `tickets_sprints:${activeTeamId}`,
+          url: `/api/sprints?teamId=${activeTeamId}`,
+          staleMs: 60_000,
+          force,
+        });
 
-  const fetchTickets = useCallback(async () => {
-    if (!user) return;
-    if (user.role === "CLIENT") {
-      setLoading(false);
-      return;
-    }
-    try {
-      setError("");
-      const params = new URLSearchParams();
-      if (statusFilter) {
-        params.append("status", statusFilter);
+        setSprints(Array.isArray(data) ? data : []);
+      } catch {
+        setSprints([]);
+      } finally {
+        setLoadingSprints(false);
       }
-      if (priorityFilter) {
-        params.append("priority", priorityFilter);
+    },
+    [user, activeTeamId, isAllTeams],
+  );
+
+  const fetchTickets = useCallback(
+    async (force = false) => {
+      if (!user) return;
+      if (user.role === "CLIENT") {
+        setLoading(false);
+        return;
       }
-      if (assigneeFilter) {
-        params.append("assigneeId", assigneeFilter);
-      }
-      if (sprintFilter === "backlog") {
-        params.append("sprintId", "backlog");
-      } else if (sprintFilter && sprintFilter !== "__all__") {
-        params.append("sprintId", sprintFilter);
-      }
-      if (user.role === "USER") {
-        if (!activeTeamId) {
-          setTickets([]);
-          setLoading(false);
-          return;
+      try {
+        setError("");
+        const params = new URLSearchParams();
+        if (statusFilter) {
+          params.append("status", statusFilter);
         }
-        params.set("teamId", activeTeamId);
-      } else if (user.role === "SUPER_ADMIN") {
-        if (!isAllTeams && activeTeamId) {
+        if (priorityFilter) {
+          params.append("priority", priorityFilter);
+        }
+        if (assigneeFilter) {
+          params.append("assigneeId", assigneeFilter);
+        }
+        if (sprintFilter === "backlog") {
+          params.append("sprintId", "backlog");
+        } else if (sprintFilter && sprintFilter !== "__all__") {
+          params.append("sprintId", sprintFilter);
+        }
+        if (user.role === "USER") {
+          if (!activeTeamId) {
+            setTickets([]);
+            setLoading(false);
+            return;
+          }
           params.set("teamId", activeTeamId);
+        } else if (user.role === "SUPER_ADMIN") {
+          if (!isAllTeams && activeTeamId) {
+            params.set("teamId", activeTeamId);
+          }
         }
+
+        const query = params.toString();
+        const data = await cachedGetJson<Ticket[]>({
+          key: `tickets_list:${query || "all"}`,
+          url: `/api/tickets?${query}`,
+          staleMs: 30_000,
+          force,
+        });
+        setTickets(data);
+      } catch {
+        setError("Failed to fetch tickets");
+      } finally {
+        setLoading(false);
       }
-
-      const response = await fetch(`/api/tickets?${params}`);
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch tickets");
-      }
-
-      const data = await response.json();
-      setTickets(data);
-    } catch {
-      setError("Failed to fetch tickets");
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    statusFilter,
-    priorityFilter,
-    assigneeFilter,
-    sprintFilter,
-    user,
-    activeTeamId,
-    isAllTeams,
-  ]);
+    },
+    [
+      statusFilter,
+      priorityFilter,
+      assigneeFilter,
+      sprintFilter,
+      user,
+      activeTeamId,
+      isAllTeams,
+    ],
+  );
 
   useEffect(() => {
     if (user && user.role !== "CLIENT") fetchTickets();
@@ -437,7 +448,7 @@ function TicketsPageContent() {
       ) {
         return;
       }
-      void fetchTickets();
+      void fetchTickets(true);
     });
 
     return unsubscribe;
@@ -481,8 +492,6 @@ function TicketsPageContent() {
             : "Failed to update ticket",
         );
       }
-
-      await fetchTickets();
     } catch (err) {
       setTickets(previousTickets);
       setError(err instanceof Error ? err.message : "Failed to update ticket");
@@ -540,8 +549,6 @@ function TicketsPageContent() {
             : "Failed to update assignee",
         );
       }
-
-      await fetchTickets();
     } catch (err) {
       setTickets(previousTickets);
       setError(
@@ -581,8 +588,6 @@ function TicketsPageContent() {
             : "Failed to update priority",
         );
       }
-
-      await fetchTickets();
     } catch (err) {
       setTickets(previousTickets);
       setError(
@@ -593,13 +598,8 @@ function TicketsPageContent() {
 
   useEffect(() => {
     if (!user || user.role === "CLIENT") return;
-    void fetchAssignableUsers();
-  }, [user, activeTeamId, isAllTeams, fetchAssignableUsers]);
-
-  useEffect(() => {
-    if (!user || user.role === "CLIENT") return;
-    void fetchSprints();
-  }, [user, activeTeamId, isAllTeams, fetchSprints]);
+    void Promise.all([fetchAssignableUsers(), fetchSprints()]);
+  }, [user, activeTeamId, isAllTeams, fetchAssignableUsers, fetchSprints]);
 
   useEffect(() => {
     if (sprintFilter === "__all__" || sprintFilter === "backlog") return;
@@ -622,15 +622,21 @@ function TicketsPageContent() {
           throw new Error("Failed to create ticket");
         }
 
-        const created = (await response.json()) as { id?: string };
-        await fetchTickets();
+        const created = (await response.json()) as Ticket & { id?: string };
+        if (created?.id) {
+          setTickets((prev) => {
+            const exists = prev.some((ticket) => ticket.id === created.id);
+            if (exists) return prev;
+            return [created, ...prev];
+          });
+        }
         return created;
       } catch {
         setError("Failed to create ticket");
         return null;
       }
     },
-    [fetchTickets],
+    [],
   );
 
   useEffect(() => {
@@ -638,7 +644,30 @@ function TicketsPageContent() {
       const customEvent = event as CustomEvent<CreateTicketSubmitDetail>;
       void (async () => {
         const created = await handleCreateTicket(customEvent.detail.payload);
-        const ok = Boolean(created?.id);
+        let ok = Boolean(created?.id);
+        let message: string | undefined;
+
+        if (ok && created?.id && customEvent.detail.attachments?.length) {
+          const uploads = await Promise.all(
+            customEvent.detail.attachments.map(async (file) => {
+              const fd = new FormData();
+              fd.append("file", file);
+              const res = await fetch(
+                `/api/tickets/${created.id}/attachments`,
+                {
+                  method: "POST",
+                  body: fd,
+                },
+              );
+              return res.ok;
+            }),
+          );
+
+          const failedCount = uploads.filter((done) => !done).length;
+          if (failedCount > 0) {
+            message = `Ticket created, but ${failedCount} attachment(s) failed to upload.`;
+          }
+        }
 
         window.dispatchEvent(
           new CustomEvent<CreateTicketResultDetail>(
@@ -646,7 +675,7 @@ function TicketsPageContent() {
             {
               detail: {
                 ok,
-                message: ok ? undefined : "Failed to create ticket.",
+                message: ok ? message : "Failed to create ticket.",
               },
             },
           ),
@@ -689,8 +718,7 @@ function TicketsPageContent() {
       if (!response.ok) {
         throw new Error("Failed to delete ticket");
       }
-
-      fetchTickets();
+      setTickets((prev) => prev.filter((ticket) => ticket.id !== ticketId));
     } catch {}
   };
 
@@ -747,7 +775,7 @@ function TicketsPageContent() {
       setImportRows(Array.isArray(body.rows) ? body.rows : []);
 
       if (!dryRun) {
-        await fetchTickets();
+        await fetchTickets(true);
       }
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "Failed to import tasks");
@@ -923,12 +951,13 @@ function TicketsPageContent() {
                   placeholder={
                     user.role === "SUPER_ADMIN" && isAllTeams
                       ? "Select team for sprints"
-                      : loadingSprints
-                        ? "Loading sprints..."
-                        : "Sprint"
+                      : "Sprint"
                   }
                   triggerClassName="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/50 text-gray-900 dark:text-white"
                 />
+                {loadingSprints ? (
+                  <SkeletonDropdown className="min-w-[170px]" />
+                ) : null}
               </div>
             </div>
           </div>
@@ -942,8 +971,10 @@ function TicketsPageContent() {
 
           {/* Tickets Grid/List */}
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: pageSize }).map((_, idx) => (
+                <SkeletonTicketCard key={`ticket-skeleton-${idx}`} />
+              ))}
             </div>
           ) : filteredTickets.length === 0 ? (
             <div className="text-center py-12">
@@ -1090,7 +1121,7 @@ function TicketsPageContent() {
                               currentSprintName={ticket.sprint?.name}
                               teamId={ticket.team?.id || activeTeamId}
                               onSprintChange={() => {
-                                void fetchTickets();
+                                void fetchTickets(true);
                               }}
                             />
                           </div>

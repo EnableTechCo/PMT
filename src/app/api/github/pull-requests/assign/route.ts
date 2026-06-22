@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     const ticket = await db.ticket.findUnique({
       where: { id: resolvedTicketId },
-      select: { id: true },
+      select: { id: true, status: true },
     });
 
     if (!ticket) {
@@ -91,7 +91,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (pr.state === "open") {
+    const shouldMoveToInReview =
+      pr.state === "open" &&
+      ticket.status !== TicketStatus.IN_REVIEW &&
+      ticket.status !== TicketStatus.COMPLETE;
+
+    if (shouldMoveToInReview) {
       await db.ticket.update({
         where: { id: resolvedTicketId },
         data: { status: TicketStatus.IN_REVIEW },

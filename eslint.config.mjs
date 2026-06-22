@@ -33,6 +33,12 @@ const eslintConfig = [
       ],
     },
   },
+  {
+    files: ["electron/**/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

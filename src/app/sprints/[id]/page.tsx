@@ -289,7 +289,7 @@ export default function SprintDetailPage() {
     );
   }
 
-  const daysUntilEnd = sprint.startsAt
+  const _daysUntilEnd = sprint.startsAt
     ? Math.ceil(
         (new Date(sprint.endsAt).getTime() - new Date().getTime()) /
           (1000 * 60 * 60 * 24),

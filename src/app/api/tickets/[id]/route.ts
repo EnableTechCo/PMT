@@ -276,6 +276,7 @@ async function hydrateTicketFallback(baseTicket: any) {
     db.ticketAttachment.findMany({
       where: { ticketId: baseTicket.id },
       orderBy: { createdAt: "desc" },
+      include: { uploadedBy: { select: { id: true, name: true } } },
     }),
     db.ticketActivity.findMany({
       where: { ticketId: baseTicket.id },
@@ -510,6 +511,24 @@ export async function PATCH(
         typeof updates.status === "string" &&
         STATUS_SET.has(updates.status)
       ) {
+        if (updates.status === TicketStatus.COMPLETE) {
+          if (ticket.status !== TicketStatus.QA) {
+            return NextResponse.json(
+              { error: "Only tickets in QA can be marked Complete" },
+              { status: 400 },
+            );
+          }
+
+          if (ticket.assigneeId && ticket.assigneeId === user.id) {
+            return NextResponse.json(
+              {
+                error:
+                  "Assignees cannot mark tickets Complete; QA validation is required",
+              },
+              { status: 403 },
+            );
+          }
+        }
         allowed.status = updates.status;
       }
       if (

@@ -20,8 +20,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Plus,
-  MoreHorizontal,
   Clock,
+  Calendar,
   CheckCircle,
   AlertCircle,
   Zap,
@@ -31,8 +31,10 @@ import {
   ListTodo,
   Filter,
 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { SprintSelector } from "@/components/SprintSelector";
+import { SelectMenu } from "@/components/SelectMenu";
 
 interface Ticket {
   id: string;
@@ -184,6 +186,18 @@ const priorityConfig: Record<string, { label: string; className: string }> = {
   },
 };
 
+const statusColorMap: Record<string, string> = {
+  BACKLOG: "#6b7280",
+  TODO: "#64748b",
+  REFINE: "#4f46e5",
+  IN_PROGRESS: "#3b82f6",
+  IN_REVIEW: "#06b6d4",
+  QA: "#f97316",
+  REVISIONS: "#eab308",
+  COMPLETE: "#22c55e",
+  CLIENT_REVIEW: "#ec4899",
+};
+
 function getPriorityDisplay(priority?: string | null) {
   const normalized = (priority ?? "NONE").toUpperCase();
   return priorityConfig[normalized] ?? priorityConfig.NONE;
@@ -201,7 +215,7 @@ function SortableTicket({
   onTicketSprintChange?: () => void;
 }) {
   const priority = getPriorityDisplay(ticket.priority);
-  const effectiveTeamId = ticket.team?.id || activeTeamId;
+  const effectiveTeamId = ticket.team?.id ?? activeTeamId ?? "";
 
   const {
     attributes,
@@ -218,54 +232,43 @@ function SortableTicket({
   };
 
   return (
-    <div
+    <Card
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group flex gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-3 shadow-card transition-shadow hover:shadow-card-hover dark:border-gray-800 dark:bg-[#1c1c24] w-full max-w-full",
+        "cursor-move transition-all duration-300 border bg-white/60 dark:bg-neutral-800/60 backdrop-blur-sm hover:bg-white/70 dark:hover:bg-neutral-700/70 rounded-xl",
         isDragging && "opacity-75 scale-105 shadow-2xl",
       )}
+      draggable
+      {...attributes}
+      {...listeners}
     >
-      <button
-        type="button"
-        className="mt-0.5 flex h-8 w-6 shrink-0 cursor-grab touch-none items-start justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 active:cursor-grabbing dark:hover:bg-white/10 dark:hover:text-gray-900"
-        aria-label="Drag to move ticket"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <div
-        role="button"
-        tabIndex={0}
-        className="min-w-0 flex-1 cursor-pointer text-left"
-        onClick={onClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onClick();
-          }
-        }}
-      >
-        <div className="mb-2 flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+      <CardContent className="p-5">
+        <div className="space-y-4">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
               {ticketDisplayId(ticket)}
             </p>
-            <h4 className="line-clamp-2 min-h-10 text-sm font-medium normal-case leading-5 text-slate-900 dark:text-white">
+            <GripVertical className="w-5 h-5 text-neutral-500 dark:text-neutral-400 cursor-move shrink-0 ml-2" />
+          </div>
+
+          <div
+            role="button"
+            tabIndex={0}
+            className="cursor-pointer"
+            onClick={onClick}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }}
+          >
+            <h4 className="line-clamp-2 h-10 font-semibold text-neutral-900 dark:text-neutral-100 leading-tight">
               {ticket.title}
             </h4>
           </div>
-          <button
-            type="button"
-            className="shrink-0 text-gray-400 opacity-0 transition-opacity hover:text-gray-700 group-hover:opacity-100 dark:hover:text-gray-300"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
-        </div>
 
-        <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-medium text-gray-600 dark:text-gray-300 truncate">
               {ticket.project?.name || "No project"}
@@ -279,14 +282,8 @@ function SortableTicket({
               {priority.label}
             </span>
           </div>
-          {ticket.sprint ? (
-            <div className="flex items-center gap-2">
-              <div className="text-xs bg-brand-500/15 text-brand-700 dark:text-brand-300 px-2 py-0.5 rounded font-medium truncate flex-1">
-                {ticket.sprint.name}
-              </div>
-            </div>
-          ) : null}
-          {effectiveTeamId ? (
+
+          {ticket.sprint && effectiveTeamId ? (
             <div className="text-xs" onClick={(e) => e.stopPropagation()}>
               <SprintSelector
                 ticketId={ticket.id}
@@ -299,17 +296,44 @@ function SortableTicket({
               />
             </div>
           ) : null}
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-xs text-gray-500 truncate">
-              {ticket.assignee?.name || "No assignee"}
+
+          <div className="flex items-center justify-between pt-2 border-t border-neutral-200/30 dark:border-neutral-700/30 gap-3">
+            <div
+              className="min-w-0 flex-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <SelectMenu
+                value={ticket.assignee?.id || ""}
+                onChange={(id) => {
+                  // Assignee update is intentionally scoped to existing behavior.
+                  console.log("Assignee changed to:", id);
+                }}
+                options={[
+                  { value: "", label: "No assignee" },
+                  ...(ticket.assignee
+                    ? [
+                        {
+                          value: ticket.assignee.id,
+                          label: ticket.assignee.name,
+                        },
+                      ]
+                    : []),
+                ]}
+                size="sm"
+                className="w-full"
+              />
             </div>
-            <div className="text-xs text-gray-500 shrink-0">
-              {new Date(ticket.createdAt).toLocaleDateString()}
+
+            <div className="flex items-center gap-1 text-neutral-600 dark:text-neutral-400 shrink-0">
+              <Calendar className="w-4 h-4" />
+              <span className="text-xs font-medium">
+                {new Date(ticket.createdAt).toLocaleDateString()}
+              </span>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -317,42 +341,47 @@ function DraggedTicket({ ticket }: { ticket: Ticket }) {
   const priority = getPriorityDisplay(ticket.priority);
 
   return (
-    <div className="w-full max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
-      <div className="flex items-start justify-between mb-3">
-        <div className="min-w-0 flex-1">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
-            {ticketDisplayId(ticket)}
-          </p>
-          <h4 className="line-clamp-2 min-h-10 text-sm font-medium leading-5 text-slate-900 dark:text-white">
-            {ticket.title}
-          </h4>
-        </div>
-      </div>
+    <Card className="cursor-move border bg-white/60 dark:bg-neutral-800/60 backdrop-blur-sm hover:bg-white/70 dark:hover:bg-neutral-700/70 rounded-xl shadow-2xl">
+      <CardContent className="p-5">
+        <div className="space-y-4">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300 mb-1">
+              {ticketDisplayId(ticket)}
+            </p>
+            <GripVertical className="w-5 h-5 text-neutral-500 dark:text-neutral-400 shrink-0 ml-2" />
+          </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-medium text-gray-600 dark:text-gray-300 truncate">
-            {ticket.project?.name || "No project"}
+          <div>
+            <h4 className="line-clamp-2 h-10 font-semibold text-neutral-900 dark:text-neutral-100 leading-tight">
+              {ticket.title}
+            </h4>
           </div>
-          <span
-            className={cn(
-              "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-              priority.className,
-            )}
-          >
-            {priority.label}
-          </span>
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-medium text-gray-600 dark:text-gray-300 truncate">
+              {ticket.project?.name || "No project"}
+            </div>
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                priority.className,
+              )}
+            >
+              {priority.label}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-end pt-2 border-t border-neutral-200/30 dark:border-neutral-700/30">
+            <div className="flex items-center gap-1 text-neutral-600 dark:text-neutral-400">
+              <Calendar className="w-4 h-4" />
+              <span className="text-xs font-medium">
+                {new Date(ticket.createdAt).toLocaleDateString()}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-gray-500 text-xs">
-            {ticket.client?.name || ticket.project?.client?.name}
-          </div>
-          <div className="text-gray-500 text-xs">
-            {new Date(ticket.createdAt).toLocaleDateString()}
-          </div>
-        </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -482,38 +511,36 @@ export default function KanbanBoard({
       >
         {Object.entries(groupedTickets).map(([status, tickets]) => {
           const config = statusConfig[status as keyof typeof statusConfig];
-          const StatusIcon = config.icon;
 
           return (
             <DroppableColumn key={status} status={status}>
-              <div className="min-h-[600px] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
-                <div className="border-b border-[var(--border)] p-4 dark:border-gray-800">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      <div className={cn("p-1 rounded-lg", config.bgColor)}>
-                        <StatusIcon className="w-4 h-4" />
-                      </div>
-                      <h3 className="text-slate-900 dark:text-gray-100 font-semibold text-sm">
-                        {config.label}
-                      </h3>
-                    </div>
-                    <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600 tabular-nums dark:bg-white/10 dark:text-gray-300">
+              <div className="min-h-[600px] rounded-3xl border border-border bg-white/20 dark:bg-neutral-900/20 backdrop-blur-xl dark:border-neutral-700/50 p-5">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-4 h-4 rounded-full"
+                      style={{
+                        backgroundColor: statusColorMap[status] || "#666",
+                      }}
+                    />
+                    <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">
+                      {config.label}
+                    </h3>
+                    <span className="rounded-full bg-neutral-100/80 dark:bg-neutral-800/80 px-2 py-0.5 text-xs font-medium text-neutral-800 dark:text-neutral-200 border-neutral-200/50 dark:border-neutral-600/50 border">
                       {tickets.length}
                     </span>
                   </div>
-
                   {(userRole === "USER" || userRole === "SUPER_ADMIN") && (
                     <button
                       onClick={onCreateTicket}
-                      className="mt-2 flex w-full items-center justify-center gap-1 rounded-md p-2 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/40"
+                      className="p-1 rounded-full bg-white/30 dark:bg-neutral-800/30 hover:bg-white/50 dark:hover:bg-neutral-700/50 transition-colors"
                     >
-                      <Plus className="w-3 h-3" />
-                      <span>Add ticket</span>
+                      <Plus className="w-4 h-4 text-neutral-700 dark:text-neutral-300" />
                     </button>
                   )}
                 </div>
 
-                <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
+                <div className="space-y-4">
                   <SortableContext
                     items={tickets.map((t) => t.id)}
                     strategy={verticalListSortingStrategy}
@@ -530,9 +557,9 @@ export default function KanbanBoard({
                   </SortableContext>
 
                   {tickets.length === 0 && (
-                    <div className="text-center py-8 text-gray-500 text-sm">
-                      <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <Tag className="w-4 h-4 text-gray-500" />
+                    <div className="text-center py-8 text-neutral-500 text-sm">
+                      <div className="w-8 h-8 bg-neutral-200/40 dark:bg-neutral-700/40 rounded-lg flex items-center justify-center mx-auto mb-2 backdrop-blur-sm border border-neutral-200/30 dark:border-neutral-700/30">
+                        <Tag className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
                       </div>
                       No tickets
                     </div>

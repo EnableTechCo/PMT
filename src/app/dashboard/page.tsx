@@ -19,6 +19,11 @@ import type {
 import KanbanBoard from "@/components/KanbanBoard";
 import { Pagination } from "@/components/Pagination";
 import {
+  SkeletonDropdown,
+  SkeletonKanbanColumn,
+  SkeletonTable,
+} from "@/components/ui/Skeleton";
+import {
   Plus,
   Search,
   Eye,
@@ -32,6 +37,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
+import { cachedGetJson } from "@/store/cacheClient";
 
 interface Ticket {
   id: string;
@@ -199,131 +205,136 @@ export default function DashboardPage() {
     })),
   ];
 
-  const fetchGithubOverview = useCallback(async () => {
-    if (!user || user.role !== "SUPER_ADMIN") return;
+  const fetchGithubOverview = useCallback(
+    async (force = false) => {
+      if (!user || user.role !== "SUPER_ADMIN") return;
 
-    try {
-      const params = new URLSearchParams();
-      if (!isAllTeams && activeTeamId) {
-        params.set("teamId", activeTeamId);
-      }
+      try {
+        const params = new URLSearchParams();
+        if (!isAllTeams && activeTeamId) {
+          params.set("teamId", activeTeamId);
+        }
 
-      const query = params.toString();
-      const response = await fetch(
-        `/api/analytics/executive${query ? `?${query}` : ""}`,
-        { cache: "no-store" },
-      );
+        const query = params.toString();
+        const payload = await cachedGetJson<{
+          githubAnalytics?: { openPullRequests?: number };
+        }>({
+          key: `dashboard_executive_overview:${query || "all"}`,
+          url: `/api/analytics/executive${query ? `?${query}` : ""}`,
+          staleMs: 45_000,
+          force,
+        });
 
-      if (!response.ok) {
+        setOpenPrCount(payload.githubAnalytics?.openPullRequests ?? 0);
+      } catch {
         setOpenPrCount(0);
+      }
+    },
+    [user, isAllTeams, activeTeamId],
+  );
+
+  const fetchSprints = useCallback(
+    async (force = false) => {
+      if (!activeTeamId) {
+        setSprints([]);
         return;
       }
 
-      const payload = (await response.json()) as {
-        githubAnalytics?: { openPullRequests?: number };
-      };
-
-      setOpenPrCount(payload.githubAnalytics?.openPullRequests ?? 0);
-    } catch {
-      setOpenPrCount(0);
-    }
-  }, [user, isAllTeams, activeTeamId]);
-
-  const fetchSprints = useCallback(async () => {
-    if (!activeTeamId) {
-      setSprints([]);
-      return;
-    }
-
-    try {
-      setLoadingSprints(true);
-      const response = await fetch(`/api/sprints?teamId=${activeTeamId}`);
-      if (response.ok) {
-        const data = await response.json();
+      try {
+        setLoadingSprints(true);
+        const data = await cachedGetJson<
+          Array<{ id: string; name: string; status: string }>
+        >({
+          key: `dashboard_sprints:${activeTeamId}`,
+          url: `/api/sprints?teamId=${activeTeamId}`,
+          staleMs: 60_000,
+          force,
+        });
         setSprints(Array.isArray(data) ? data : []);
-      } else {
+      } catch {
         setSprints([]);
+      } finally {
+        setLoadingSprints(false);
       }
-    } catch {
-      setSprints([]);
-    } finally {
-      setLoadingSprints(false);
-    }
-  }, [activeTeamId]);
+    },
+    [activeTeamId],
+  );
 
   useEffect(() => {
     void fetchSprints();
   }, [fetchSprints]);
 
-  const fetchTickets = useCallback(async () => {
-    if (!user) return;
+  const fetchTickets = useCallback(
+    async (force = false) => {
+      if (!user) return;
 
-    try {
-      setLoading(true);
-      setError("");
-      const params = new URLSearchParams();
-      if (statusFilter) params.append("status", statusFilter);
-      if (priorityFilter) params.append("priority", priorityFilter);
+      try {
+        setLoading(true);
+        setError("");
+        const params = new URLSearchParams();
+        if (statusFilter) params.append("status", statusFilter);
+        if (priorityFilter) params.append("priority", priorityFilter);
 
-      // Handle sprint filtering
-      if (sprintFilter === "__active__") {
-        const activeSprint = sprints.find((s) => s.status === "ACTIVE");
-        if (activeSprint) {
-          params.append("sprintId", activeSprint.id);
-        } else {
-          params.append("sprintId", "backlog");
+        // Handle sprint filtering
+        if (sprintFilter === "__active__") {
+          const activeSprint = sprints.find((s) => s.status === "ACTIVE");
+          if (activeSprint) {
+            params.append("sprintId", activeSprint.id);
+          } else {
+            params.append("sprintId", "backlog");
+          }
+        } else if (sprintFilter && sprintFilter !== "__all__") {
+          params.append("sprintId", sprintFilter);
         }
-      } else if (sprintFilter && sprintFilter !== "__all__") {
-        params.append("sprintId", sprintFilter);
-      }
 
-      if (user.role === "USER") {
-        if (!activeTeamId) {
-          setTickets([]);
-          setLoading(false);
-          return;
-        }
-        params.append("teamId", activeTeamId);
-      } else if (user.role === "SUPER_ADMIN") {
-        if (!isAllTeams && activeTeamId) {
+        if (user.role === "USER") {
+          if (!activeTeamId) {
+            setTickets([]);
+            setLoading(false);
+            return;
+          }
           params.append("teamId", activeTeamId);
+        } else if (user.role === "SUPER_ADMIN") {
+          if (!isAllTeams && activeTeamId) {
+            params.append("teamId", activeTeamId);
+          }
         }
+
+        const query = params.toString();
+        const data = await cachedGetJson<Ticket[]>({
+          key: `dashboard_tickets:${query || "all"}`,
+          url: `/api/tickets?${query}`,
+          staleMs: 30_000,
+          force,
+        });
+        setTickets(data);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load tickets");
+        setTickets([]);
+      } finally {
+        setLoading(false);
       }
-
-      const response = await fetch(`/api/tickets?${params}`);
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to fetch tickets");
-      }
-
-      const data = await response.json();
-      setTickets(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load tickets");
-      setTickets([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    user,
-    statusFilter,
-    priorityFilter,
-    activeTeamId,
-    isAllTeams,
-    sprintFilter,
-    sprints,
-  ]);
+    },
+    [
+      user,
+      statusFilter,
+      priorityFilter,
+      activeTeamId,
+      isAllTeams,
+      sprintFilter,
+      sprints,
+    ],
+  );
 
   useEffect(() => {
-    if (authLoading || !user) return;
+    if (!user) return;
     void fetchTickets();
-  }, [authLoading, user, fetchTickets]);
+  }, [user, fetchTickets]);
 
   useEffect(() => {
-    if (authLoading || !user || user.role !== "SUPER_ADMIN") return;
+    if (!user || user.role !== "SUPER_ADMIN") return;
     void fetchGithubOverview();
-  }, [authLoading, user, fetchGithubOverview]);
+  }, [user, fetchGithubOverview]);
 
   useEffect(() => {
     if (!user) return;
@@ -339,9 +350,9 @@ export default function DashboardPage() {
       ) {
         return;
       }
-      void fetchTickets();
+      void fetchTickets(true);
       if (user.role === "SUPER_ADMIN") {
-        void fetchGithubOverview();
+        void fetchGithubOverview(true);
       }
     });
 
@@ -349,6 +360,19 @@ export default function DashboardPage() {
   }, [user, fetchTickets, fetchGithubOverview]);
 
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
+    let previousTicket: Ticket | null = null;
+    setTickets((prev) =>
+      prev.map((ticket) => {
+        if (ticket.id !== ticketId) return ticket;
+        previousTicket = ticket;
+        return {
+          ...ticket,
+          status: newStatus,
+          updatedAt: new Date().toISOString(),
+        };
+      }),
+    );
+
     try {
       setError("");
       const response = await fetch(`/api/tickets/${ticketId}`, {
@@ -365,9 +389,14 @@ export default function DashboardPage() {
         };
         throw new Error(body.error || "Failed to update ticket");
       }
-
-      await fetchTickets();
     } catch (err) {
+      if (previousTicket) {
+        setTickets((prev) =>
+          prev.map((ticket) =>
+            ticket.id === ticketId ? previousTicket! : ticket,
+          ),
+        );
+      }
       setError(err instanceof Error ? err.message : "Failed to update ticket");
     }
   };
@@ -385,14 +414,20 @@ export default function DashboardPage() {
 
         if (!response.ok) throw new Error("Failed to create ticket");
 
-        const created = (await response.json()) as { id?: string };
-        await fetchTickets();
+        const created = (await response.json()) as Ticket & { id?: string };
+        if (created?.id) {
+          setTickets((prev) => {
+            const exists = prev.some((ticket) => ticket.id === created.id);
+            if (exists) return prev;
+            return [created, ...prev];
+          });
+        }
         return created;
       } catch {
         return null;
       }
     },
-    [fetchTickets],
+    [],
   );
 
   useEffect(() => {
@@ -469,8 +504,22 @@ export default function DashboardPage() {
 
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-gray-200 border-t-brand-600 dark:border-gray-700"></div>
+      <div className="min-h-screen bg-[var(--app-canvas)] p-6">
+        <div className="mx-auto w-full max-w-7xl space-y-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-20 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] animate-pulse"
+              />
+            ))}
+          </div>
+          <div className="flex gap-6 overflow-x-auto pb-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonKanbanColumn key={i} />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -572,14 +621,18 @@ export default function DashboardPage() {
               placeholder="Priority"
               className="min-w-[160px]"
             />
-            <SelectMenu
-              value={sprintFilter}
-              onChange={setSprintFilter}
-              disabled={loadingSprints}
-              options={sprintFilterOptions}
-              placeholder={loadingSprints ? "Loading sprints..." : "Sprint"}
-              className="min-w-[180px]"
-            />
+            {loadingSprints ? (
+              <SkeletonDropdown className="min-w-[180px]" />
+            ) : (
+              <SelectMenu
+                value={sprintFilter}
+                onChange={setSprintFilter}
+                disabled={loadingSprints}
+                options={sprintFilterOptions}
+                placeholder="Sprint"
+                className="min-w-[180px]"
+              />
+            )}
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
@@ -590,19 +643,27 @@ export default function DashboardPage() {
             </button>
           </div>
           {/* Kanban for overview */}
-          <KanbanBoard
-            tickets={filteredTickets}
-            onStatusChange={handleStatusChange}
-            onTicketClick={(ticket) => {
-              router.push(`/tickets/${ticket.id}`);
-            }}
-            userRole={user.role}
-            onCreateTicket={() => setShowCreateModal(true)}
-            activeTeamId={activeTeamId}
-            onTicketSprintChange={() => {
-              void fetchTickets();
-            }}
-          />
+          {loading ? (
+            <div className="flex gap-6 overflow-x-auto pb-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonKanbanColumn key={i} />
+              ))}
+            </div>
+          ) : (
+            <KanbanBoard
+              tickets={filteredTickets}
+              onStatusChange={handleStatusChange}
+              onTicketClick={(ticket) => {
+                router.push(`/tickets/${ticket.id}`);
+              }}
+              userRole={user.role}
+              onCreateTicket={() => setShowCreateModal(true)}
+              activeTeamId={activeTeamId}
+              onTicketSprintChange={() => {
+                void fetchTickets();
+              }}
+            />
+          )}
 
           <CreateTicketModal
             isOpen={showCreateModal}
@@ -665,7 +726,7 @@ export default function DashboardPage() {
                     placeholder="Search tickets or clients..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-lg border-2 border-brand-400 bg-white py-2 pl-10 pr-4 text-gray-900 placeholder-gray-500 transition focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-brand-600 dark:bg-[#1c1c24] dark:text-white"
+                    className="w-full rounded-lg border border-gray-100 bg-white py-2 pl-10 pr-4 text-gray-900 placeholder-gray-500 transition focus:border-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-100/60 dark:border-gray-100 dark:bg-[#1c1c24] dark:text-white"
                   />
                 </div>
 
@@ -681,7 +742,7 @@ export default function DashboardPage() {
                       }))}
                       placeholder="Team"
                       className="min-w-[180px]"
-                      triggerClassName="bg-blue-100/60 border-2 border-blue-400 dark:bg-blue-950/40 dark:border-blue-700"
+                      triggerClassName="bg-white border border-gray-100 dark:bg-[#1c1c24] dark:border-gray-100"
                     />
                   ) : null}
 
@@ -691,7 +752,7 @@ export default function DashboardPage() {
                     options={statusFilterOptions}
                     placeholder="Status"
                     className="min-w-[200px]"
-                    triggerClassName="bg-purple-100/60 border-2 border-purple-400 dark:bg-purple-950/40 dark:border-purple-700"
+                    triggerClassName="bg-white border border-gray-100 dark:bg-[#1c1c24] dark:border-gray-100"
                   />
 
                   <SelectMenu
@@ -700,53 +761,63 @@ export default function DashboardPage() {
                     options={priorityFilterOptions}
                     placeholder="Priority"
                     className="min-w-[180px]"
-                    triggerClassName="bg-orange-100/60 border-2 border-orange-400 dark:bg-orange-950/40 dark:border-orange-700"
+                    triggerClassName="bg-white border border-gray-100 dark:bg-[#1c1c24] dark:border-gray-100"
                   />
 
-                  <SelectMenu
-                    value={sprintFilter}
-                    onChange={setSprintFilter}
-                    disabled={loadingSprints}
-                    options={sprintFilterOptions}
-                    placeholder={
-                      loadingSprints ? "Loading sprints..." : "Sprint"
-                    }
-                    className="min-w-[200px]"
-                    triggerClassName="bg-green-100/60 border-2 border-green-400 dark:bg-green-950/40 dark:border-green-700"
-                  />
+                  {loadingSprints ? (
+                    <SkeletonDropdown className="min-w-[200px]" />
+                  ) : (
+                    <SelectMenu
+                      value={sprintFilter}
+                      onChange={setSprintFilter}
+                      disabled={loadingSprints}
+                      options={sprintFilterOptions}
+                      placeholder="Sprint"
+                      className="min-w-[200px]"
+                      triggerClassName="bg-white border border-gray-100 dark:bg-[#1c1c24] dark:border-gray-100"
+                    />
+                  )}
                 </div>
               </div>
             </div>
 
-            <KanbanBoard
-              tickets={filteredTickets}
-              onStatusChange={handleStatusChange}
-              onTicketClick={(ticket) => {
-                router.push(`/tickets/${ticket.id}`);
-              }}
-              userRole={user.role}
-              onCreateTicket={() => setShowCreateModal(true)}
-              activeTeamId={activeTeamId}
-              onTicketSprintChange={() => {
-                void fetchTickets();
-              }}
-            />
+            {loading ? (
+              <div className="flex gap-6 overflow-x-auto pb-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <SkeletonKanbanColumn key={i} />
+                ))}
+              </div>
+            ) : (
+              <KanbanBoard
+                tickets={filteredTickets}
+                onStatusChange={handleStatusChange}
+                onTicketClick={(ticket) => {
+                  router.push(`/tickets/${ticket.id}`);
+                }}
+                userRole={user.role}
+                onCreateTicket={() => setShowCreateModal(true)}
+                activeTeamId={activeTeamId}
+                onTicketSprintChange={() => {
+                  void fetchTickets();
+                }}
+              />
+            )}
           </div>
         )}
 
         {selectedView === "list" && (
           <div className="space-y-6">
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
+            <div className="rounded-2xl border border-slate-200/70 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm dark:border-slate-800 dark:from-[#171926] dark:to-[#121520]">
               <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                 <div className="flex-1">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4" />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
                     <input
                       type="text"
                       placeholder="Search tickets..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full rounded-lg border-2 border-brand-400 bg-white py-2 pl-10 pr-4 text-gray-900 placeholder-gray-500 transition focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-brand-600 dark:bg-[#1c1c24] dark:text-white"
+                      className="w-full rounded-xl border border-slate-300/70 bg-white/90 py-3 pl-10 pr-4 text-slate-900 placeholder-slate-500 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900/60 dark:text-white dark:placeholder-slate-400"
                     />
                   </div>
                 </div>
@@ -763,7 +834,7 @@ export default function DashboardPage() {
                       }))}
                       placeholder="Team"
                       className="min-w-[180px]"
-                      triggerClassName="bg-blue-100/60 border-2 border-blue-400 dark:bg-blue-950/40 dark:border-blue-700"
+                      triggerClassName="bg-sky-50 border border-sky-300/70 dark:bg-sky-950/30 dark:border-sky-700/70"
                     />
                   ) : null}
 
@@ -773,7 +844,7 @@ export default function DashboardPage() {
                     options={statusFilterOptions}
                     placeholder="Status"
                     className="min-w-[200px]"
-                    triggerClassName="bg-purple-100/60 border-2 border-purple-400 dark:bg-purple-950/40 dark:border-purple-700"
+                    triggerClassName="bg-violet-50 border border-violet-300/70 dark:bg-violet-950/30 dark:border-violet-700/70"
                   />
 
                   <SelectMenu
@@ -782,28 +853,28 @@ export default function DashboardPage() {
                     options={priorityFilterOptions}
                     placeholder="Priority"
                     className="min-w-[180px]"
-                    triggerClassName="bg-orange-100/60 border-2 border-orange-400 dark:bg-orange-950/40 dark:border-orange-700"
+                    triggerClassName="bg-amber-50 border border-amber-300/70 dark:bg-amber-950/30 dark:border-amber-700/70"
                   />
 
-                  <SelectMenu
-                    value={sprintFilter}
-                    onChange={setSprintFilter}
-                    disabled={loadingSprints}
-                    options={sprintFilterOptions}
-                    placeholder={
-                      loadingSprints ? "Loading sprints..." : "Sprint"
-                    }
-                    className="min-w-[200px]"
-                    triggerClassName="bg-green-100/60 border-2 border-green-400 dark:bg-green-950/40 dark:border-green-700"
-                  />
+                  {loadingSprints ? (
+                    <SkeletonDropdown className="min-w-[200px]" />
+                  ) : (
+                    <SelectMenu
+                      value={sprintFilter}
+                      onChange={setSprintFilter}
+                      disabled={loadingSprints}
+                      options={sprintFilterOptions}
+                      placeholder="Sprint"
+                      className="min-w-[200px]"
+                      triggerClassName="bg-emerald-50 border border-emerald-300/70 dark:bg-emerald-950/30 dark:border-emerald-700/70"
+                    />
+                  )}
                 </div>
               </div>
             </div>
 
             {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-brand-600 dark:border-gray-700"></div>
-              </div>
+              <SkeletonTable rows={6} cols={5} />
             ) : filteredTickets.length === 0 ? (
               <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-12 text-center shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
                 <p className="text-gray-600 text-lg mb-2">No tickets found</p>
@@ -820,24 +891,24 @@ export default function DashboardPage() {
                 )}
               </div>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
+              <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/95 shadow-lg shadow-slate-900/5 dark:border-slate-800 dark:bg-[#141827]">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left p-6 text-brand-700 font-bold dark:text-brand-300">
-                          Assignee Title
+                      <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/50">
+                        <th className="text-left px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                          Title
                         </th>
-                        <th className="text-left p-6 text-gray-500 font-medium">
+                        <th className="text-left px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
                           Assignee
                         </th>
-                        <th className="text-left p-6 text-gray-500 font-medium">
+                        <th className="text-left px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
                           Status
                         </th>
-                        <th className="text-left p-6 text-gray-500 font-medium">
+                        <th className="text-left px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
                           Client
                         </th>
-                        <th className="text-left p-6 text-gray-500 font-medium">
+                        <th className="text-left px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
                           Actions
                         </th>
                       </tr>
@@ -863,44 +934,50 @@ export default function DashboardPage() {
                               }
                               router.push(`/tickets/${ticket.id}`);
                             }}
-                            className="border-b border-brand-200 transition-colors hover:bg-brand-50 dark:hover:bg-brand-950/30 dark:border-brand-800 cursor-pointer"
+                            className="cursor-pointer border-b border-slate-200/90 transition-colors hover:bg-slate-50/80 dark:border-slate-800/80 dark:hover:bg-slate-900/40 last:border-b-0"
                           >
-                            <td className="p-6">
+                            <td className="px-6 py-5 align-top">
                               <div>
-                                <p className="text-slate-900 font-medium dark:text-white">
+                                <p className="line-clamp-2 text-[15px] font-semibold text-slate-900 dark:text-slate-100">
                                   {ticket.title}
                                 </p>
-                                <p className="text-gray-500 dark:text-gray-400 text-sm">
+                                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                                   by {ticket.creator.name}
                                 </p>
                               </div>
                             </td>
-                            <td className="p-6">
-                              <p className="text-gray-300 dark:text-gray-400 dark:hover:text-gray-900">
+                            <td className="px-6 py-5 align-top">
+                              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
                                 {ticket.assignee?.name || "Unassigned"}
                               </p>
                             </td>
-                            <td className="p-6">
+                            <td className="px-6 py-5 align-top">
                               <span
                                 className={cn(
-                                  "inline-flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium border",
+                                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
                                   status.color,
                                 )}
                               >
-                                <StatusIcon className="w-3 h-3" />
+                                <StatusIcon
+                                  className={cn(
+                                    "h-3.5 w-3.5",
+                                    ticket.status === "IN_PROGRESS" &&
+                                      "motion-safe:animate-pulse",
+                                  )}
+                                />
                                 <span>{status.label}</span>
                               </span>
                             </td>
-                            <td className="p-6">
-                              <p className="text-gray-300">
+                            <td className="px-6 py-5 align-top">
+                              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
                                 {ticket.client?.name || "No client"}
                               </p>
                             </td>
-                            <td className="p-6">
-                              <div className="flex items-center space-x-2">
+                            <td className="px-6 py-5 align-top">
+                              <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  className="text-gray-500 hover:text-gray-900 dark:text-white p-1 relative group"
+                                  className="relative rounded-lg border border-slate-300/70 p-2 text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white group"
                                   onClick={() =>
                                     router.push(`/tickets/${ticket.id}`)
                                   }
@@ -913,7 +990,7 @@ export default function DashboardPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  className="text-gray-500 hover:text-gray-900 dark:text-white p-1 relative group"
+                                  className="relative rounded-lg border border-slate-300/70 p-2 text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white group"
                                   onClick={() =>
                                     router.push(`/tickets/${ticket.id}`)
                                   }

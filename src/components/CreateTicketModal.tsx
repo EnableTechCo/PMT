@@ -11,6 +11,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { SkeletonDropdown } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
 
 interface Client {
@@ -69,6 +70,7 @@ export type CreateTicketPayload = {
 export type CreateTicketSubmitDetail = {
   payload: CreateTicketPayload;
   openAfterCreate: boolean;
+  attachments?: File[];
 };
 
 export type CreateTicketResultDetail = {
@@ -142,6 +144,7 @@ export default function CreateTicketModal({
   const [sprints, setSprints] = useState<SprintOption[]>([]);
   const [isLoadingSprints, setIsLoadingSprints] = useState(false);
   const [formError, setFormError] = useState("");
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -175,6 +178,7 @@ export default function CreateTicketModal({
         });
         setProjects([]);
         setAssignees([]);
+        setAttachmentFiles([]);
         window.dispatchEvent(new CustomEvent("create-ticket-modal-close"));
         return;
       }
@@ -219,104 +223,76 @@ export default function CreateTicketModal({
   useEffect(() => {
     if (!formData.teamId) {
       setSprints([]);
+      setAssignees([]);
+      setProjects([]);
       setIsLoadingSprints(false);
-      setFormData((prev) => ({ ...prev, sprintId: "" }));
+      setIsLoadingAssignees(false);
+      setIsLoadingProjects(false);
+      setFormData((prev) => ({ ...prev, sprintId: "", projectId: "" }));
       return;
     }
 
     let canceled = false;
 
-    const loadSprints = async () => {
+    const loadTeamDependencies = async () => {
       setIsLoadingSprints(true);
+      setIsLoadingAssignees(true);
+      setIsLoadingProjects(true);
+
+      const [sprintsRes, membersRes, projectsRes] = await Promise.allSettled([
+        fetch(`/api/sprints?teamId=${formData.teamId}`),
+        fetch(`/api/teams/${formData.teamId}/members`),
+        fetch(`/api/projects?teamId=${formData.teamId}`),
+      ]);
+
+      if (canceled) return;
+
       try {
-        const res = await fetch(`/api/sprints?teamId=${formData.teamId}`);
-        if (!res.ok) {
-          if (!canceled) setSprints([]);
-          return;
+        if (sprintsRes.status === "fulfilled" && sprintsRes.value.ok) {
+          const data = (await sprintsRes.value.json()) as SprintOption[];
+          const activeSprints = (Array.isArray(data) ? data : []).filter(
+            (sprint) =>
+              sprint.status === "ACTIVE" || sprint.status === "PLANNED",
+          );
+          setSprints(activeSprints);
+        } else {
+          setSprints([]);
         }
-
-        const data = (await res.json()) as SprintOption[];
-        if (canceled) return;
-
-        const activeSprints = (Array.isArray(data) ? data : []).filter(
-          (sprint) => sprint.status === "ACTIVE" || sprint.status === "PLANNED",
-        );
-        setSprints(activeSprints);
       } catch (error) {
         console.error("Failed to load sprints:", error);
-        if (!canceled) setSprints([]);
-      } finally {
-        if (!canceled) setIsLoadingSprints(false);
+        setSprints([]);
       }
-    };
 
-    void loadSprints();
-
-    return () => {
-      canceled = true;
-    };
-  }, [formData.teamId]);
-
-  useEffect(() => {
-    if (!formData.teamId) {
-      setAssignees([]);
-      return;
-    }
-
-    let canceled = false;
-
-    const loadTeamMembers = async () => {
-      setIsLoadingAssignees(true);
       try {
-        const res = await fetch(`/api/teams/${formData.teamId}/members`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (canceled) return;
-        setAssignees(Array.isArray(data.members) ? data.members : []);
+        if (membersRes.status === "fulfilled" && membersRes.value.ok) {
+          const data = await membersRes.value.json();
+          setAssignees(Array.isArray(data.members) ? data.members : []);
+        } else {
+          setAssignees([]);
+        }
       } catch (error) {
         console.error("Failed to load assignees:", error);
-      } finally {
-        if (!canceled) setIsLoadingAssignees(false);
+        setAssignees([]);
       }
-    };
 
-    void loadTeamMembers();
-
-    return () => {
-      canceled = true;
-    };
-  }, [formData.teamId]);
-
-  useEffect(() => {
-    if (!formData.teamId) {
-      setProjects([]);
-      setFormData((prev) => ({ ...prev, projectId: "" }));
-      setIsLoadingProjects(false);
-      return;
-    }
-
-    let canceled = false;
-
-    const loadTeamProjects = async () => {
-      setIsLoadingProjects(true);
       try {
-        const res = await fetch(`/api/projects?teamId=${formData.teamId}`);
-        if (!res.ok) {
-          if (!canceled) setProjects([]);
-          return;
+        if (projectsRes.status === "fulfilled" && projectsRes.value.ok) {
+          const data = (await projectsRes.value.json()) as ProjectOption[];
+          setProjects(Array.isArray(data) ? data : []);
+        } else {
+          setProjects([]);
         }
-        const data = (await res.json()) as ProjectOption[];
-        if (canceled) return;
-        setProjects(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error("Failed to load client projects:", error);
-        if (!canceled) setProjects([]);
+        setProjects([]);
       } finally {
-        if (!canceled) setIsLoadingProjects(false);
+        setIsLoadingSprints(false);
+        setIsLoadingAssignees(false);
+        setIsLoadingProjects(false);
       }
     };
 
-    void loadTeamProjects();
+    void loadTeamDependencies();
 
     return () => {
       canceled = true;
@@ -359,6 +335,7 @@ export default function CreateTicketModal({
     });
     setProjects([]);
     setAssignees([]);
+    setAttachmentFiles([]);
     window.dispatchEvent(new CustomEvent("create-ticket-modal-close"));
   };
 
@@ -414,6 +391,7 @@ export default function CreateTicketModal({
             detail: {
               payload,
               openAfterCreate,
+              attachments: attachmentFiles,
             },
           },
         ),
@@ -428,6 +406,10 @@ export default function CreateTicketModal({
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     void submitTicket(false);
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachmentFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   if (!isOpen) return null;
@@ -586,38 +568,32 @@ export default function CreateTicketModal({
               <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
                 Assignee
               </label>
-              <SelectMenu
-                value={formData.assigneeId}
-                onChange={(value) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    assigneeId: value,
-                  }))
-                }
-                options={
-                  isLoadingAssignees
-                    ? [
-                        {
-                          value: "",
-                          label: "Loading assignees...",
-                          disabled: true,
-                        },
-                      ]
-                    : [
-                        { value: "", label: "Unassigned" },
-                        ...safeAssignees.map((member) => ({
-                          value: member.userId,
-                          label: member.name,
-                        })),
-                      ]
-                }
-                disabled={isLoadingAssignees}
-                searchable={safeAssignees.length > 10}
-                searchPlaceholder="Search assignees"
-                className="w-full"
-                triggerClassName="rounded-none border-gray-300 bg-white text-gray-900 hover:bg-gray-50 focus:border-brand-500 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-                menuClassName="bg-white text-gray-900 dark:bg-[#0f1116] dark:text-slate-100"
-              />
+              {isLoadingAssignees ? (
+                <SkeletonDropdown className="w-full rounded-none" />
+              ) : (
+                <SelectMenu
+                  value={formData.assigneeId}
+                  onChange={(value) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      assigneeId: value,
+                    }))
+                  }
+                  options={[
+                    { value: "", label: "Unassigned" },
+                    ...safeAssignees.map((member) => ({
+                      value: member.userId,
+                      label: member.name,
+                    })),
+                  ]}
+                  disabled={isLoadingAssignees}
+                  searchable={safeAssignees.length > 10}
+                  searchPlaceholder="Search assignees"
+                  className="w-full"
+                  triggerClassName="rounded-none border-gray-300 bg-white text-gray-900 hover:bg-gray-50 focus:border-brand-500 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                  menuClassName="bg-white text-gray-900 dark:bg-[#0f1116] dark:text-slate-100"
+                />
+              )}
             </div>
           )}
 
@@ -635,21 +611,13 @@ export default function CreateTicketModal({
                 options={
                   !teamIdValue
                     ? [{ value: "", label: "Select a team first" }]
-                    : isLoadingSprints
-                      ? [
-                          {
-                            value: "",
-                            label: "Loading sprints...",
-                            disabled: true,
-                          },
-                        ]
-                      : [
-                          { value: "", label: "Backlog (No sprint)" },
-                          ...safeSprints.map((sprint) => ({
-                            value: sprint.id,
-                            label: `${sprint.name} (${sprint.status})`,
-                          })),
-                        ]
+                    : [
+                        { value: "", label: "Backlog (No sprint)" },
+                        ...safeSprints.map((sprint) => ({
+                          value: sprint.id,
+                          label: `${sprint.name} (${sprint.status})`,
+                        })),
+                      ]
                 }
                 className="w-full"
                 searchable={safeSprints.length > 8}
@@ -657,31 +625,29 @@ export default function CreateTicketModal({
                 triggerClassName="rounded-none border-gray-300 bg-white text-gray-900 hover:bg-gray-50 focus:border-brand-500 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                 menuClassName="bg-white text-gray-900 dark:bg-[#0f1116] dark:text-slate-100"
               />
+              {isLoadingSprints ? (
+                <SkeletonDropdown className="mt-2 w-full rounded-none" />
+              ) : null}
             </div>
 
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
                 Client (Optional)
               </label>
-              <SelectMenu
-                value={formData.clientId}
-                onChange={(value) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    clientId: value,
-                    projectId: "",
-                  }))
-                }
-                options={
-                  isLoadingClients
-                    ? [
-                        {
-                          value: "",
-                          label: "Loading clients...",
-                          disabled: true,
-                        },
-                      ]
-                    : safeClients.length === 0
+              {isLoadingClients ? (
+                <SkeletonDropdown className="w-full rounded-none" />
+              ) : (
+                <SelectMenu
+                  value={formData.clientId}
+                  onChange={(value) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      clientId: value,
+                      projectId: "",
+                    }))
+                  }
+                  options={
+                    safeClients.length === 0
                       ? [
                           {
                             value: "",
@@ -696,41 +662,37 @@ export default function CreateTicketModal({
                             label: `${client.name} • ${client.email}`,
                           })),
                         ]
-                }
-                disabled={isLoadingClients || safeClients.length === 0}
-                placeholder="No client selected"
-                searchable={safeClients.length > 8}
-                searchPlaceholder="Search clients"
-                className="w-full"
-                triggerClassName="rounded-none border border-gray-300 bg-white text-gray-900 hover:bg-gray-50 focus:border-brand-500 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-                menuClassName="bg-white text-gray-900 dark:bg-[#0f1116] dark:text-slate-100"
-              />
+                  }
+                  disabled={isLoadingClients || safeClients.length === 0}
+                  placeholder="No client selected"
+                  searchable={safeClients.length > 8}
+                  searchPlaceholder="Search clients"
+                  className="w-full"
+                  triggerClassName="rounded-none border border-gray-300 bg-white text-gray-900 hover:bg-gray-50 focus:border-brand-500 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                  menuClassName="bg-white text-gray-900 dark:bg-[#0f1116] dark:text-slate-100"
+                />
+              )}
             </div>
 
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
                 Project (From selected client)
               </label>
-              <SelectMenu
-                value={formData.projectId}
-                onChange={(value) =>
-                  setFormData((prev) => ({ ...prev, projectId: value }))
-                }
-                disabled={!canSelectProject || isLoadingProjects}
-                options={
-                  !canSelectProject
-                    ? [
-                        {
-                          value: "",
-                          label: "Select a team to link a project (optional)",
-                        },
-                      ]
-                    : isLoadingProjects
+              {isLoadingProjects ? (
+                <SkeletonDropdown className="w-full rounded-none" />
+              ) : (
+                <SelectMenu
+                  value={formData.projectId}
+                  onChange={(value) =>
+                    setFormData((prev) => ({ ...prev, projectId: value }))
+                  }
+                  disabled={!canSelectProject || isLoadingProjects}
+                  options={
+                    !canSelectProject
                       ? [
                           {
                             value: "",
-                            label: "Loading projects...",
-                            disabled: true,
+                            label: "Select a team to link a project (optional)",
                           },
                         ]
                       : [
@@ -740,13 +702,14 @@ export default function CreateTicketModal({
                             label: project.name,
                           })),
                         ]
-                }
-                searchable={projectsForSelectedClient.length > 8}
-                searchPlaceholder="Search projects"
-                className="w-full"
-                triggerClassName="rounded-none border-gray-300 bg-white text-gray-900 hover:bg-gray-50 focus:border-brand-500 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-                menuClassName="bg-white text-gray-900 dark:bg-[#0f1116] dark:text-slate-100"
-              />
+                  }
+                  searchable={projectsForSelectedClient.length > 8}
+                  searchPlaceholder="Search projects"
+                  className="w-full"
+                  triggerClassName="rounded-none border-gray-300 bg-white text-gray-900 hover:bg-gray-50 focus:border-brand-500 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                  menuClassName="bg-white text-gray-900 dark:bg-[#0f1116] dark:text-slate-100"
+                />
+              )}
               {selectedProject && selectedProjectRepos.length > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {selectedProjectRepos.map((repo) => (
@@ -935,6 +898,46 @@ export default function CreateTicketModal({
               Tip: You can create a complete ticket without linking a project or
               client, then enrich it later.
             </p>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">
+                Attachments (Optional)
+              </label>
+              <input
+                type="file"
+                multiple
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length) {
+                    setAttachmentFiles((prev) => [...prev, ...files]);
+                  }
+                  e.target.value = "";
+                }}
+                className="w-full rounded-none border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900 file:mr-3 file:rounded-none file:border-0 file:bg-brand-600 file:px-3 file:py-2 file:text-white hover:file:bg-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              />
+              {attachmentFiles.length > 0 ? (
+                <ul className="mt-3 space-y-2">
+                  {attachmentFiles.map((file, idx) => (
+                    <li
+                      key={`${file.name}-${file.size}-${idx}`}
+                      className="flex items-center justify-between rounded border border-gray-200 px-3 py-2 text-xs dark:border-slate-700"
+                    >
+                      <span className="truncate pr-3 text-gray-700 dark:text-slate-300">
+                        {file.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(idx)}
+                        className="text-red-600 hover:text-red-700 dark:text-red-400"
+                        title="Remove attachment"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex items-center justify-end space-x-3 border-t border-gray-200 pt-6 dark:border-slate-700">

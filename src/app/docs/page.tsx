@@ -283,7 +283,7 @@ export default function DocsPage() {
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [selectedItem?.id, selectedItem?.contentHtml]);
+  }, [selectedItem?.id, selectedItem?.contentHtml, selectedItem?.title]);
 
   // Track active heading based on page scroll position.
   useEffect(() => {

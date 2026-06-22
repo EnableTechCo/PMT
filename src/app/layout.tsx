@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Geist } from "next/font/google";
 import "./globals.css";
+import Providers from "@/app/providers";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { TeamProvider } from "@/contexts/TeamContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -26,13 +27,15 @@ export default function RootLayout({
       <body
         className={`${inter.className} antialiased text-[var(--text-primary)]`}
       >
-        <ThemeProvider>
-          <AuthProvider>
-            <RealtimeProvider>
-              <TeamProvider>{children}</TeamProvider>
-            </RealtimeProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <Providers>
+          <ThemeProvider>
+            <AuthProvider>
+              <RealtimeProvider>
+                <TeamProvider>{children}</TeamProvider>
+              </RealtimeProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );

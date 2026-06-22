@@ -31,8 +31,16 @@ import {
   Power,
   RefreshCcw,
   RotateCcw,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SkeletonLine } from "@/components/ui/Skeleton";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import {
+  setResourceFailed,
+  setResourcePending,
+  setResourceSuccess,
+} from "@/store/slices/resourceCacheSlice";
 
 interface GithubUser {
   login: string;
@@ -102,11 +110,28 @@ export default function SettingsPage() {
 
 function SettingsPageContent() {
   const searchParams = useSearchParams();
+  const dispatch = useAppDispatch();
+  const notificationPrefsCache = useAppSelector(
+    (state) => state.resourceCache.byKey.settings_notification_prefs,
+  );
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const [activeTab, setActiveTab] = useState<
-    "profile" | "github" | "security" | "backup"
+    "profile" | "github" | "notifications" | "security" | "backup"
   >("github");
+
+  // Notification preferences state
+  const [notifPrefs, setNotifPrefs] = useState({
+    ticketWorkflow: true,
+    codeReview: true,
+    systemReleases: true,
+    monitoringAlerts: true,
+    clientFeedback: true,
+  });
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifSaved, setNotifSaved] = useState(false);
+  const [notifError, setNotifError] = useState("");
 
   // GitHub integration state
   const [githubToken, setGithubToken] = useState("");
@@ -170,10 +195,88 @@ function SettingsPageContent() {
   }, [user]);
 
   useEffect(() => {
-    if (isSuperAdmin && activeTab === "security") {
+    if (!isSuperAdmin && activeTab === "security") {
       setActiveTab("github");
     }
   }, [activeTab, isSuperAdmin]);
+
+  useEffect(() => {
+    if (activeTab !== "notifications") return;
+    const cachedPrefs =
+      notificationPrefsCache?.data &&
+      typeof notificationPrefsCache.data === "object"
+        ? (notificationPrefsCache.data as typeof notifPrefs)
+        : null;
+    const hasFreshCache =
+      cachedPrefs &&
+      notificationPrefsCache?.fetchedAt &&
+      Date.now() - notificationPrefsCache.fetchedAt < 300_000;
+
+    if (hasFreshCache) {
+      setNotifPrefs((prev) => ({ ...prev, ...cachedPrefs }));
+      setNotifLoading(false);
+      return;
+    }
+
+    setNotifLoading(true);
+    setNotifError("");
+    dispatch(setResourcePending({ key: "settings_notification_prefs" }));
+    fetch("/api/settings/notifications")
+      .then((r) => r.json())
+      .then((data: { preferences?: typeof notifPrefs }) => {
+        if (data.preferences) {
+          setNotifPrefs({ ...notifPrefs, ...data.preferences });
+          dispatch(
+            setResourceSuccess({
+              key: "settings_notification_prefs",
+              data: data.preferences,
+            }),
+          );
+        }
+      })
+      .catch(() => {
+        dispatch(
+          setResourceFailed({
+            key: "settings_notification_prefs",
+            error: "Failed to load notification preferences.",
+          }),
+        );
+        setNotifError("Failed to load notification preferences.");
+      })
+      .finally(() => setNotifLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    activeTab,
+    dispatch,
+    notificationPrefsCache?.data,
+    notificationPrefsCache?.fetchedAt,
+  ]);
+
+  async function saveNotifPrefs() {
+    setNotifSaving(true);
+    setNotifSaved(false);
+    setNotifError("");
+    try {
+      const res = await fetch("/api/settings/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferences: notifPrefs }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      dispatch(
+        setResourceSuccess({
+          key: "settings_notification_prefs",
+          data: notifPrefs,
+        }),
+      );
+      setNotifSaved(true);
+      setTimeout(() => setNotifSaved(false), 3000);
+    } catch {
+      setNotifError("Failed to save preferences. Please try again.");
+    } finally {
+      setNotifSaving(false);
+    }
+  }
 
   useEffect(() => {
     const githubStatus = searchParams.get("github");
@@ -508,7 +611,19 @@ function SettingsPageContent() {
               <Github className="w-4 h-4" />
               GitHub Integration
             </button>
-            {!isSuperAdmin ? (
+            <button
+              onClick={() => setActiveTab("notifications")}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                activeTab === "notifications"
+                  ? "bg-brand-600/[0.12] text-brand-800 ring-1 ring-brand-500/20 dark:bg-brand-600/15 dark:text-brand-200"
+                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5",
+              )}
+            >
+              <Bell className="w-4 h-4" />
+              Notifications
+            </button>
+            {isSuperAdmin ? (
               <button
                 onClick={() => setActiveTab("security")}
                 className={cn(
@@ -590,8 +705,8 @@ function SettingsPageContent() {
             )}
 
             {activeTab === "github" && (
-              <div className="bg-white dark:bg-[#1c1c24] border border-gray-200 dark:border-gray-800 p-6 rounded-2xl shadow-card space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="bg-white dark:bg-[#1c1c24] border border-gray-200 dark:border-gray-800 p-6 lg:p-8 rounded-2xl shadow-card space-y-8">
+                <div className="flex flex-col gap-4 border-b border-gray-100 pb-5 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                       <Github className="w-6 h-6" />
@@ -609,9 +724,8 @@ function SettingsPageContent() {
                   </div>
                   <div className="flex shrink-0">
                     {checkingStatus ? (
-                      <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Checking status...
+                      <div className="w-24">
+                        <SkeletonLine className="h-6 w-full rounded-full" />
                       </div>
                     ) : githubUser ? (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/25 shadow-sm">
@@ -704,57 +818,59 @@ function SettingsPageContent() {
                 ) : null}
 
                 {githubUser ? (
-                  <div className="space-y-4">
-                    <div className="border border-gray-200 dark:border-gray-800 rounded-xl p-6 bg-slate-50/50 dark:bg-slate-900/20 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-                      <div className="flex items-center gap-4">
-                        {githubUser.avatarUrl ? (
-                          <Image
-                            src={githubUser.avatarUrl}
-                            alt={githubUser.login}
-                            width={56}
-                            height={56}
-                            unoptimized
-                            loader={({ src }) => src}
-                            className="w-14 h-14 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm"
-                          />
-                        ) : (
-                          <div className="w-14 h-14 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-lg">
-                            {githubUser.login.charAt(0).toUpperCase()}
+                  <div className="space-y-6">
+                    <div className="rounded-2xl border border-gray-200 bg-slate-50/70 p-5 dark:border-gray-800 dark:bg-slate-900/20 lg:p-6">
+                      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+                        <div className="flex items-center gap-4">
+                          {githubUser.avatarUrl ? (
+                            <Image
+                              src={githubUser.avatarUrl}
+                              alt={githubUser.login}
+                              width={56}
+                              height={56}
+                              unoptimized
+                              loader={({ src }) => src}
+                              className="w-14 h-14 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm"
+                            />
+                          ) : (
+                            <div className="w-14 h-14 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-lg">
+                              {githubUser.login.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                              Connected Account
+                            </p>
+                            <p className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                              @{githubUser.login}
+                              <a
+                                href={`https://github.com/${githubUser.login}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-gray-400 hover:text-brand-500 transition-colors"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            </p>
                           </div>
-                        )}
-                        <div>
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                            Connected Account
-                          </p>
-                          <p className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                            @{githubUser.login}
-                            <a
-                              href={`https://github.com/${githubUser.login}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-gray-400 hover:text-brand-500 transition-colors"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
-                          </p>
                         </div>
-                      </div>
 
-                      <div className="flex flex-col items-stretch gap-2 sm:items-end">
-                        {githubSource !== "system" ? (
-                          <button
-                            onClick={() => setShowDisconnectConfirm(true)}
-                            disabled={connecting}
-                            className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-red-200 dark:border-red-900/50 rounded-lg text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Disconnect Account
-                          </button>
-                        ) : null}
+                        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                          {githubSource !== "system" ? (
+                            <button
+                              onClick={() => setShowDisconnectConfirm(true)}
+                              disabled={connecting}
+                              className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-red-200 dark:border-red-900/50 rounded-lg text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Disconnect Account
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-[#13131a] space-y-4">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-[#13131a] space-y-5 lg:p-6">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
@@ -771,7 +887,7 @@ function SettingsPageContent() {
                             void loadGithubProjectAccount();
                           }}
                           disabled={githubReposLoading || connecting}
-                          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 sm:w-auto"
                         >
                           {githubReposLoading ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -852,7 +968,7 @@ function SettingsPageContent() {
                                       setSelectedRepoFullName(repo.full_name);
                                     }}
                                     className={cn(
-                                      "w-full px-3 py-2.5 text-left transition-colors",
+                                      "w-full px-4 py-3 text-left transition-colors",
                                       isSelected
                                         ? "bg-brand-50 dark:bg-brand-500/10"
                                         : "bg-white hover:bg-gray-50 dark:bg-[#111118] dark:hover:bg-[#1b1b24]",
@@ -862,11 +978,11 @@ function SettingsPageContent() {
                                       <p className="text-sm font-semibold text-slate-900 dark:text-white">
                                         {repo.full_name}
                                       </p>
-                                      <span className="text-[11px] uppercase tracking-wide text-gray-500">
+                                      <span className="shrink-0 text-[11px] uppercase tracking-wide text-gray-500">
                                         {repo.private ? "Private" : "Public"}
                                       </span>
                                     </div>
-                                    <p className="mt-1 text-xs text-gray-500">
+                                    <p className="mt-0.5 text-xs text-gray-500">
                                       Default branch:{" "}
                                       {repo.default_branch || "main"}
                                     </p>
@@ -883,22 +999,23 @@ function SettingsPageContent() {
                           ) : null}
 
                           {selectedRepoLoading ? (
-                            <div className="flex items-center gap-2 text-sm text-gray-500">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Loading branches and pull requests...
+                            <div className="space-y-2">
+                              <SkeletonLine className="h-9 w-full" />
+                              <SkeletonLine className="h-9 w-full" />
+                              <SkeletonLine className="h-9 w-3/4" />
                             </div>
                           ) : (
                             <div className="grid gap-4 md:grid-cols-2">
-                              <div className="rounded-lg border border-gray-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-slate-900/40">
+                              <div className="rounded-lg border border-gray-200 bg-slate-50 p-4 dark:border-gray-800 dark:bg-slate-900/40">
                                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                                   Branches
                                 </p>
-                                <div className="mt-2 max-h-56 space-y-1 overflow-auto">
+                                <div className="mt-3 max-h-56 space-y-1.5 overflow-auto">
                                   {selectedRepoBranches.length ? (
                                     selectedRepoBranches.map((branch) => (
                                       <div
                                         key={branch.name}
-                                        className="rounded-md border border-gray-200 bg-white px-2.5 py-2 text-xs text-slate-800 dark:border-gray-700 dark:bg-[#12121a] dark:text-slate-200"
+                                        className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-xs text-slate-800 dark:border-gray-700 dark:bg-[#12121a] dark:text-slate-200"
                                       >
                                         <p className="font-semibold">
                                           {branch.name}
@@ -918,11 +1035,11 @@ function SettingsPageContent() {
                                 </div>
                               </div>
 
-                              <div className="rounded-lg border border-gray-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-slate-900/40">
+                              <div className="rounded-lg border border-gray-200 bg-slate-50 p-4 dark:border-gray-800 dark:bg-slate-900/40">
                                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                                   Pull requests
                                 </p>
-                                <div className="mt-2 max-h-56 space-y-1 overflow-auto">
+                                <div className="mt-3 max-h-56 space-y-1.5 overflow-auto">
                                   {selectedRepoPullRequests.length ? (
                                     selectedRepoPullRequests.map((pr) => (
                                       <a
@@ -930,13 +1047,13 @@ function SettingsPageContent() {
                                         href={pr.html_url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="block rounded-md border border-gray-200 bg-white px-2.5 py-2 text-xs text-slate-800 hover:bg-gray-50 dark:border-gray-700 dark:bg-[#12121a] dark:text-slate-200 dark:hover:bg-[#1a1a24]"
+                                        className="block rounded-md border border-gray-200 bg-white px-3 py-2.5 text-xs text-slate-800 hover:bg-gray-50 dark:border-gray-700 dark:bg-[#12121a] dark:text-slate-200 dark:hover:bg-[#1a1a24]"
                                       >
                                         <p className="font-semibold">
                                           #{pr.number} {pr.title}
                                         </p>
                                         <p className="mt-0.5 text-[11px] text-gray-500">
-                                          {pr.state} by{" "}
+                                          {pr.state} ·{" "}
                                           {pr.user?.login || "unknown"}
                                         </p>
                                       </a>
@@ -953,12 +1070,13 @@ function SettingsPageContent() {
                           )}
                         </div>
                       ) : githubReposLoading ? (
-                        <div className="flex items-center gap-2 text-sm text-gray-500">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Loading repositories...
+                        <div className="space-y-2">
+                          <SkeletonLine className="h-10 w-full" />
+                          <SkeletonLine className="h-10 w-full" />
+                          <SkeletonLine className="h-10 w-5/6" />
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-500">
+                        <p className="rounded-lg border border-gray-200 bg-slate-50 px-3 py-2.5 text-sm text-gray-500 dark:border-gray-800 dark:bg-slate-900/30">
                           No repositories found for this account.
                         </p>
                       )}
@@ -1007,69 +1125,60 @@ function SettingsPageContent() {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-slate-50 dark:bg-[#13131a] p-4">
-                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">
-                        One-click connect (recommended)
-                      </p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-                        Connect with GitHub OAuth so you do not need to manually
-                        paste personal access tokens.
-                      </p>
-                      <button
-                        onClick={handleOAuthConnect}
-                        disabled={connecting}
-                        className="btn-primary inline-flex items-center gap-2"
-                      >
-                        <Github className="w-4 h-4" />
-                        Connect with GitHub
-                      </button>
-                    </div>
-
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-gray-200 dark:border-gray-800" />
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-slate-50 dark:bg-[#13131a] p-5">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">
+                          One-click connect (recommended)
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                          Connect with GitHub OAuth so you do not need to
+                          manually paste personal access tokens.
+                        </p>
+                        <button
+                          onClick={handleOAuthConnect}
+                          disabled={connecting}
+                          className="btn-primary inline-flex items-center gap-2"
+                        >
+                          <Github className="w-4 h-4" />
+                          Connect with GitHub
+                        </button>
                       </div>
-                      <div className="relative flex justify-center text-[11px] uppercase tracking-wide text-gray-400">
-                        <span className="bg-white px-2 dark:bg-[#1c1c24]">
-                          or use personal access token
-                        </span>
+
+                      <div className="bg-slate-50 dark:bg-[#13131a] rounded-xl p-5 border border-gray-200 dark:border-gray-800/80 text-sm space-y-3">
+                        <p className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                          <Key className="w-4 h-4 text-brand-500" />
+                          How to connect your GitHub account:
+                        </p>
+                        <ol className="list-decimal pl-5 space-y-1.5 text-gray-600 dark:text-gray-400 text-xs">
+                          <li>
+                            Go to your GitHub{" "}
+                            <a
+                              href="https://github.com/settings/tokens/new?scopes=repo&description=PMT%20Hub%20Integration"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-brand-600 hover:underline inline-flex items-center gap-0.5"
+                            >
+                              Personal Access Tokens (Classic){" "}
+                              <ExternalLink className="w-3 h-3 inline" />
+                            </a>{" "}
+                            settings.
+                          </li>
+                          <li>
+                            Generate a token with the{" "}
+                            <code className="font-semibold text-brand-600 bg-brand-50 dark:bg-brand-500/10 px-1 py-0.5 rounded">
+                              repo
+                            </code>{" "}
+                            scope selected.
+                          </li>
+                          <li>
+                            Copy the generated token and paste it in the field
+                            below.
+                          </li>
+                        </ol>
                       </div>
                     </div>
 
-                    <div className="bg-slate-50 dark:bg-[#13131a] rounded-xl p-4 border border-gray-200 dark:border-gray-800/80 text-sm space-y-3">
-                      <p className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                        <Key className="w-4 h-4 text-brand-500" />
-                        How to connect your GitHub account:
-                      </p>
-                      <ol className="list-decimal pl-5 space-y-1.5 text-gray-600 dark:text-gray-400 text-xs">
-                        <li>
-                          Go to your GitHub{" "}
-                          <a
-                            href="https://github.com/settings/tokens/new?scopes=repo&description=PMT%20Hub%20Integration"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-brand-600 hover:underline inline-flex items-center gap-0.5"
-                          >
-                            Personal Access Tokens (Classic){" "}
-                            <ExternalLink className="w-3 h-3 inline" />
-                          </a>{" "}
-                          settings.
-                        </li>
-                        <li>
-                          Generate a token with the{" "}
-                          <code className="font-semibold text-brand-600 bg-brand-50 dark:bg-brand-500/10 px-1 py-0.5 rounded">
-                            repo
-                          </code>{" "}
-                          scope selected.
-                        </li>
-                        <li>
-                          Copy the generated token and paste it in the field
-                          below.
-                        </li>
-                      </ol>
-                    </div>
-
-                    <div className="space-y-2">
+                    <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-[#13131a]">
                       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
                         GitHub Personal Access Token (Classic)
                       </label>
@@ -1112,7 +1221,136 @@ function SettingsPageContent() {
               </div>
             )}
 
-            {activeTab === "security" && !isSuperAdmin && (
+            {activeTab === "notifications" && (
+              <div className="bg-white dark:bg-[#1c1c24] border border-gray-200 dark:border-gray-800 p-6 rounded-2xl shadow-card space-y-6">
+                <div className="flex flex-col gap-4 border-b border-gray-100 pb-5 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Bell className="w-5 h-5" />
+                      Notification Preferences
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Choose which events send you in-app notifications.
+                    </p>
+                  </div>
+                  {notifSaved && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/50 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Saved
+                    </span>
+                  )}
+                </div>
+
+                {notifError && (
+                  <div className="flex gap-3 rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    {notifError}
+                  </div>
+                )}
+
+                {notifLoading ? (
+                  <div className="space-y-3">
+                    <SkeletonLine className="h-16 w-full rounded-xl" />
+                    <SkeletonLine className="h-16 w-full rounded-xl" />
+                    <SkeletonLine className="h-16 w-full rounded-xl" />
+                    <SkeletonLine className="h-16 w-full rounded-xl" />
+                    <SkeletonLine className="h-16 w-full rounded-xl" />
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(
+                      [
+                        {
+                          key: "ticketWorkflow" as const,
+                          label: "Ticket workflow",
+                          desc: "Assignments, comments, status changes, completions, and new tickets.",
+                        },
+                        {
+                          key: "codeReview" as const,
+                          label: "Code review",
+                          desc: "Pull request events, review requests, approvals, and revision requests.",
+                        },
+                        {
+                          key: "systemReleases" as const,
+                          label: "System releases",
+                          desc: "Merges to develop or main, deployments, and release announcements.",
+                        },
+                        {
+                          key: "monitoringAlerts" as const,
+                          label: "Monitoring alerts",
+                          desc: "Error rate spikes, downtime events, and performance threshold breaches.",
+                        },
+                        {
+                          key: "clientFeedback" as const,
+                          label: "Client feedback",
+                          desc: "New feedback submissions from client users.",
+                        },
+                      ] as const
+                    ).map(({ key, label, desc }) => (
+                      <div
+                        key={key}
+                        className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-slate-50/60 p-4 transition-colors dark:border-gray-800 dark:bg-slate-900/25"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                            {label}
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-500">{desc}</p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={notifPrefs[key]}
+                          onClick={() =>
+                            setNotifPrefs((prev) => ({
+                              ...prev,
+                              [key]: !prev[key],
+                            }))
+                          }
+                          className={cn(
+                            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-[#1c1c24]",
+                            notifPrefs[key]
+                              ? "bg-brand-600"
+                              : "bg-gray-200 dark:bg-gray-700",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out",
+                              notifPrefs[key]
+                                ? "translate-x-5"
+                                : "translate-x-0",
+                            )}
+                          />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex justify-end border-t border-gray-100 pt-4 dark:border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void saveNotifPrefs();
+                    }}
+                    disabled={notifSaving || notifLoading}
+                    className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {notifSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save preferences"
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "security" && isSuperAdmin && (
               <div className="bg-white dark:bg-[#1c1c24] border border-gray-200 dark:border-gray-800 p-6 rounded-2xl shadow-card space-y-6">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">
@@ -1351,9 +1589,10 @@ function SettingsPageContent() {
 
                   <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
                     {backupRecordsLoading ? (
-                      <div className="flex items-center gap-2 p-4 text-sm text-gray-500">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Loading
-                        backup history...
+                      <div className="space-y-px">
+                        <SkeletonLine className="h-12 w-full rounded-none" />
+                        <SkeletonLine className="h-12 w-full rounded-none" />
+                        <SkeletonLine className="h-12 w-full rounded-none" />
                       </div>
                     ) : backupRecords.length === 0 ? (
                       <div className="p-4 text-sm text-gray-500">

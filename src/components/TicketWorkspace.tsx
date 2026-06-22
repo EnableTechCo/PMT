@@ -15,6 +15,8 @@ import {
   ArrowLeft,
   Trash2,
   Paperclip,
+  ChevronLeft,
+  ChevronRight,
   Send,
   Activity,
   MessageSquare,
@@ -39,6 +41,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  SkeletonDropdown,
+  SkeletonLine,
+  SkeletonText,
+} from "@/components/ui/Skeleton";
 
 const PRIORITIES = [
   { value: "NONE", label: "None" },
@@ -105,6 +112,11 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   const [savedField, setSavedField] = useState<EditableField | null>(null);
   const [commentText, setCommentText] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string>("");
+  const [uploadError, setUploadError] = useState<string>("");
+  const [activeAttachmentIndex, setActiveAttachmentIndex] = useState<
+    number | null
+  >(null);
   const [obligations, setObligations] = useState<ClientObligation[]>([]);
   const [obligationsLoading, setObligationsLoading] = useState(false);
   const [creatingObligation, setCreatingObligation] = useState(false);
@@ -243,38 +255,73 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
 
   useEffect(() => {
     if (authLoading || !user || user.role === "CLIENT") return;
+
     const teamId = (ticket as { team?: { id: string } | null } | null)?.team
       ?.id;
     if (!teamId) {
       setAssignableUsers([]);
+      setSprintOptions([]);
+      setLoadingAssignableUsers(false);
+      setLoadingSprints(false);
       return;
     }
 
-    void (async () => {
+    let canceled = false;
+
+    const loadTeamDependencies = async () => {
       setLoadingAssignableUsers(true);
+      setLoadingSprints(true);
+
+      const [membersRes, sprintsRes] = await Promise.allSettled([
+        fetch(`/api/teams/${teamId}/members`),
+        fetch(`/api/sprints?teamId=${teamId}`),
+      ]);
+
+      if (canceled) return;
+
       try {
-        const res = await fetch(`/api/teams/${teamId}/members`);
-        if (!res.ok) {
+        if (membersRes.status === "fulfilled" && membersRes.value.ok) {
+          const body = (await membersRes.value.json()) as {
+            members?: Array<{ userId: string; name: string; email: string }>;
+          };
+          const members = Array.isArray(body.members) ? body.members : [];
+          setAssignableUsers(
+            members.map((member) => ({
+              id: member.userId,
+              name: member.name,
+              email: member.email,
+            })),
+          );
+        } else {
           setAssignableUsers([]);
-          return;
         }
-        const body = (await res.json()) as {
-          members?: Array<{ userId: string; name: string; email: string }>;
-        };
-        const members = Array.isArray(body.members) ? body.members : [];
-        setAssignableUsers(
-          members.map((member) => ({
-            id: member.userId,
-            name: member.name,
-            email: member.email,
-          })),
-        );
       } catch {
         setAssignableUsers([]);
+      }
+
+      try {
+        if (sprintsRes.status === "fulfilled" && sprintsRes.value.ok) {
+          const data = (await sprintsRes.value.json()) as SprintOption[];
+          const sprints = Array.isArray(data) ? data : [];
+          setSprintOptions(
+            sprints.filter((sprint) => sprint.status !== "CLOSED"),
+          );
+        } else {
+          setSprintOptions([]);
+        }
+      } catch {
+        setSprintOptions([]);
       } finally {
         setLoadingAssignableUsers(false);
+        setLoadingSprints(false);
       }
-    })();
+    };
+
+    void loadTeamDependencies();
+
+    return () => {
+      canceled = true;
+    };
   }, [authLoading, user, ticket]);
 
   useEffect(() => {
@@ -415,38 +462,6 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
       canceled = true;
     };
   }, [authLoading, githubConnected, ticket, user]);
-
-  useEffect(() => {
-    if (authLoading || !user || user.role === "CLIENT") return;
-
-    const teamId = (ticket as { team?: { id: string } | null } | null)?.team
-      ?.id;
-    if (!teamId) {
-      setSprintOptions([]);
-      return;
-    }
-
-    void (async () => {
-      setLoadingSprints(true);
-      try {
-        const res = await fetch(`/api/sprints?teamId=${teamId}`);
-        if (!res.ok) {
-          setSprintOptions([]);
-          return;
-        }
-
-        const data = (await res.json()) as SprintOption[];
-        const sprints = Array.isArray(data) ? data : [];
-        setSprintOptions(
-          sprints.filter((sprint) => sprint.status !== "CLOSED"),
-        );
-      } catch {
-        setSprintOptions([]);
-      } finally {
-        setLoadingSprints(false);
-      }
-    })();
-  }, [authLoading, user, ticket]);
 
   const loadBranches = async (owner: string, repo: string) => {
     setLoadingBranches(true);
@@ -769,21 +784,71 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
   };
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!file) return;
+    if (!files.length) return;
+    setUploadMessage("");
+    setUploadError("");
     setUploadBusy(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/tickets/${ticketId}/attachments`, {
-        method: "POST",
-        body: fd,
-      });
-      if (res.ok) void load();
+      const results = await Promise.all(
+        files.map(async (file) => {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch(`/api/tickets/${ticketId}/attachments`, {
+            method: "POST",
+            body: fd,
+          });
+          return { ok: res.ok, file: file.name };
+        }),
+      );
+
+      const failed = results.filter((r) => !r.ok);
+      const succeeded = results.length - failed.length;
+
+      if (succeeded > 0) {
+        setUploadMessage(
+          succeeded === 1
+            ? "Attachment uploaded successfully."
+            : `${succeeded} attachments uploaded successfully.`,
+        );
+        await load();
+      }
+      if (failed.length > 0) {
+        setUploadError(
+          failed.length === 1
+            ? "1 attachment failed to upload."
+            : `${failed.length} attachments failed to upload.`,
+        );
+      }
     } finally {
       setUploadBusy(false);
     }
+  };
+
+  const isImageAttachment = (attachment: {
+    filename: string;
+    mimeType?: string | null;
+  }) => {
+    const mime = (attachment.mimeType || "").toLowerCase();
+    if (mime.startsWith("image/")) return true;
+    return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(attachment.filename);
+  };
+
+  const openAttachmentGallery = (index: number) => {
+    setActiveAttachmentIndex(index);
+  };
+
+  const closeAttachmentGallery = () => {
+    setActiveAttachmentIndex(null);
+  };
+
+  const moveAttachment = (direction: -1 | 1, total: number) => {
+    setActiveAttachmentIndex((prev) => {
+      if (prev === null || total === 0) return prev;
+      const next = (prev + direction + total) % total;
+      return next;
+    });
   };
 
   const deleteTicket = async () => {
@@ -837,9 +902,27 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
 
   if (authLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--app-canvas)]">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-brand-600" />
-      </div>
+      <DashboardLayout>
+        <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-[#1c1c24]">
+            <SkeletonText className="h-7 w-2/5" />
+            <SkeletonLine className="mt-3 h-4 w-3/5" />
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+            <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-[#1c1c24]">
+              <SkeletonLine className="h-4 w-1/4" />
+              <SkeletonLine className="h-4 w-full" />
+              <SkeletonLine className="h-4 w-11/12" />
+              <SkeletonLine className="h-4 w-4/5" />
+            </div>
+            <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-[#1c1c24]">
+              <SkeletonDropdown className="w-full" />
+              <SkeletonDropdown className="w-full" />
+              <SkeletonDropdown className="w-full" />
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
     );
   }
 
@@ -937,7 +1020,8 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
       filename: string;
       url: string;
       size: number | null;
-      uploadedBy: { id: string; name: string };
+      mimeType?: string | null;
+      uploadedBy?: { id: string; name: string } | null;
       createdAt: string;
     }>;
     activities?: Array<{
@@ -1315,7 +1399,11 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
               ) : null}
 
               {obligationsLoading ? (
-                <p className="text-sm text-gray-500">Loading obligations...</p>
+                <div className="space-y-2">
+                  <SkeletonLine className="h-4 w-full" />
+                  <SkeletonLine className="h-4 w-5/6" />
+                  <SkeletonLine className="h-4 w-4/6" />
+                </div>
               ) : obligations.length === 0 ? (
                 <p className="text-sm text-gray-500">
                   No client obligations yet.
@@ -1716,43 +1804,6 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
 
             <section className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
               <div className="mb-4 flex items-center gap-2">
-                <Paperclip className="h-5 w-5 text-brand-600" />
-                <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">
-                  Attachments
-                </h2>
-              </div>
-              <ul className="space-y-2">
-                {(t.attachments ?? []).map((a) => (
-                  <li key={a.id}>
-                    <a
-                      href={a.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
-                    >
-                      {a.filename}
-                    </a>
-                    <span className="ml-2 text-xs text-gray-500">
-                      · {a.uploadedBy.name}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {canEdit && (
-                <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm font-medium text-brand-600 dark:text-brand-400">
-                  <input
-                    type="file"
-                    className="hidden"
-                    onChange={onUpload}
-                    disabled={uploadBusy}
-                  />
-                  {uploadBusy ? "Uploading…" : "+ Upload file"}
-                </label>
-              )}
-            </section>
-
-            <section className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
-              <div className="mb-4 flex items-center gap-2">
                 <Activity className="h-5 w-5 text-brand-600" />
                 <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">
                   Activity
@@ -1883,7 +1934,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <label className="block text-gray-500">Status</label>
                     {savingField === "status" && (
-                      <span className="text-xs text-gray-500">Saving...</span>
+                      <span className="inline-block h-2 w-2 rounded-full bg-gray-400 animate-pulse" />
                     )}
                     {savingField !== "status" && savedField === "status" && (
                       <span className="text-xs text-emerald-600">Saved</span>
@@ -1907,7 +1958,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <label className="block text-gray-500">Priority</label>
                     {savingField === "priority" && (
-                      <span className="text-xs text-gray-500">Saving...</span>
+                      <span className="inline-block h-2 w-2 rounded-full bg-gray-400 animate-pulse" />
                     )}
                     {savingField !== "priority" &&
                       savedField === "priority" && (
@@ -1932,7 +1983,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <label className="block text-gray-500">Assignee</label>
                     {savingField === "assignee" && (
-                      <span className="text-xs text-gray-500">Saving...</span>
+                      <span className="inline-block h-2 w-2 rounded-full bg-gray-400 animate-pulse" />
                     )}
                     {savingField !== "assignee" &&
                       savedField === "assignee" && (
@@ -1959,18 +2010,17 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                     ]}
                     className="w-full"
                     triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                    placeholder={
-                      loadingAssignableUsers
-                        ? "Loading assignees..."
-                        : "Select assignee"
-                    }
+                    placeholder="Select assignee"
                   />
+                  {loadingAssignableUsers ? (
+                    <SkeletonDropdown className="mt-2 w-full" />
+                  ) : null}
                 </div>
                 <div>
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <label className="block text-gray-500">Sprint</label>
                     {savingField === "sprint" && (
-                      <span className="text-xs text-gray-500">Saving...</span>
+                      <span className="inline-block h-2 w-2 rounded-full bg-gray-400 animate-pulse" />
                     )}
                     {savingField !== "sprint" && savedField === "sprint" && (
                       <span className="text-xs text-emerald-600">Saved</span>
@@ -1993,10 +2043,11 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                     ]}
                     className="w-full"
                     triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                    placeholder={
-                      loadingSprints ? "Loading sprints..." : "Select sprint"
-                    }
+                    placeholder="Select sprint"
                   />
+                  {loadingSprints ? (
+                    <SkeletonDropdown className="mt-2 w-full" />
+                  ) : null}
                 </div>
                 <div>
                   <div className="mb-1 flex items-center justify-between gap-2">
@@ -2100,9 +2151,176 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
               </div>
               {saving && <p className="mt-2 text-xs text-gray-500">Saving…</p>}
             </div>
+
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-card dark:border-gray-800 dark:bg-[#1c1c24]">
+              <div className="mb-3 flex items-center gap-2">
+                <Paperclip className="h-4 w-4 text-brand-600" />
+                <h3 className="text-xs font-bold uppercase text-gray-500">
+                  Attachments
+                </h3>
+              </div>
+
+              {(t.attachments ?? []).length === 0 ? (
+                <p className="text-xs text-gray-500">No attachments yet.</p>
+              ) : (
+                <div className="-mx-1 overflow-x-auto pb-2">
+                  <div className="inline-flex min-w-full gap-2 px-1">
+                    {(t.attachments ?? []).map((a, index) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => openAttachmentGallery(index)}
+                        className="group h-24 w-40 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-white text-left transition hover:border-brand-400 dark:border-gray-700 dark:bg-gray-950"
+                        title={a.filename}
+                      >
+                        {isImageAttachment(a) ? (
+                          <img
+                            src={a.url}
+                            alt={a.filename}
+                            className="h-14 w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-14 items-center justify-center border-b border-gray-100 text-[11px] font-semibold text-gray-500 dark:border-gray-800 dark:text-gray-400">
+                            FILE
+                          </div>
+                        )}
+                        <div className="px-2 py-1.5">
+                          <p className="truncate text-[11px] font-medium text-gray-800 group-hover:text-brand-700 dark:text-gray-200 dark:group-hover:text-brand-400">
+                            {a.filename}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {uploadMessage ? (
+                <p className="mt-3 text-xs text-emerald-600 dark:text-emerald-400">
+                  {uploadMessage}
+                </p>
+              ) : null}
+              {uploadError ? (
+                <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+                  {uploadError}
+                </p>
+              ) : null}
+
+              {canEdit && (
+                <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs font-semibold text-brand-600 dark:text-brand-400">
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={onUpload}
+                    disabled={uploadBusy}
+                  />
+                  {uploadBusy ? "Uploading…" : "+ Upload file(s)"}
+                </label>
+              )}
+            </div>
           </aside>
         </div>
       </div>
+
+      {activeAttachmentIndex !== null && (t.attachments?.length ?? 0) > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="relative flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-gray-700 bg-[#0f1117]">
+            <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+              <p className="truncate pr-3 text-sm font-medium text-gray-200">
+                {t.attachments?.[activeAttachmentIndex]?.filename}
+              </p>
+              <button
+                type="button"
+                onClick={closeAttachmentGallery}
+                className="rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white"
+                title="Close gallery"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="relative flex-1 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => moveAttachment(-1, t.attachments?.length ?? 0)}
+                className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white hover:bg-black/80"
+                title="Previous"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+
+              <div className="flex h-full items-center justify-center p-4">
+                {isImageAttachment(t.attachments![activeAttachmentIndex]) ? (
+                  <img
+                    src={t.attachments![activeAttachmentIndex].url}
+                    alt={t.attachments![activeAttachmentIndex].filename}
+                    className="max-h-full max-w-full rounded-lg object-contain"
+                  />
+                ) : (
+                  <div className="rounded-lg border border-gray-700 bg-gray-900/80 p-6 text-center">
+                    <p className="text-sm font-semibold text-gray-200">
+                      {t.attachments![activeAttachmentIndex].filename}
+                    </p>
+                    <p className="mt-2 text-xs text-gray-400">
+                      Preview is not available for this file type.
+                    </p>
+                    <a
+                      href={t.attachments![activeAttachmentIndex].url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4 inline-flex rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500"
+                    >
+                      Open file
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => moveAttachment(1, t.attachments?.length ?? 0)}
+                className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white hover:bg-black/80"
+                title="Next"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="border-t border-gray-800 p-3">
+              <div className="overflow-x-auto">
+                <div className="inline-flex gap-2">
+                  {t.attachments!.map((a, idx) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setActiveAttachmentIndex(idx)}
+                      className={cn(
+                        "h-14 w-24 shrink-0 overflow-hidden rounded border",
+                        idx === activeAttachmentIndex
+                          ? "border-brand-500"
+                          : "border-gray-700",
+                      )}
+                    >
+                      {isImageAttachment(a) ? (
+                        <img
+                          src={a.url}
+                          alt={a.filename}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center bg-gray-900 text-[10px] font-semibold text-gray-300">
+                          FILE
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* GitHub Modals */}
       {showBranchModal && activeRepo && (
@@ -2130,9 +2348,10 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
 
             <div className="p-5 overflow-y-auto max-h-96 space-y-3">
               {loadingBranches ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-2 text-sm text-gray-500">
-                  <RefreshCw className="w-6 h-6 animate-spin text-brand-500" />
-                  <span>Loading branches from GitHub...</span>
+                <div className="space-y-2 p-2">
+                  <SkeletonLine className="h-10 w-full rounded-lg" />
+                  <SkeletonLine className="h-10 w-full rounded-lg" />
+                  <SkeletonLine className="h-10 w-3/4 rounded-lg" />
                 </div>
               ) : availableBranches.length === 0 ? (
                 <p className="text-center py-8 text-sm text-gray-500">

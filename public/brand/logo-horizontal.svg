@@ -1,0 +1,17 @@
+<svg width="1400" height="360" viewBox="0 0 1400 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="24" x2="312" y2="312" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="132" y1="106" x2="254" y2="258" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="288" height="288" rx="72" fill="url(#bg)"/>
+  <rect x="48" y="48" width="240" height="240" rx="58" stroke="#334155" stroke-width="6"/>
+  <path d="M160 96H221C232 96 240 107 235 117L208 176H242C255 176 262 192 253 202L184 276C172 288 154 275 159 261L182 202H138C125 202 118 186 127 176L193 103C199 97 207 94 215 94" fill="url(#accent)"/>
+  <text x="360" y="158" fill="#0F172A" font-family="Segoe UI, Arial, sans-serif" font-size="96" font-weight="800" letter-spacing="-1.5">ENABLE</text>
+  <text x="360" y="242" fill="#334155" font-family="Segoe UI, Arial, sans-serif" font-size="70" font-weight="700" letter-spacing="8">PROJECT TOOL</text>
+</svg>

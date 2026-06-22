@@ -10,8 +10,16 @@ import React, {
 } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { onRealtimeChange } from "@/lib/realtime-events";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import {
+  setResourceFailed,
+  setResourcePending,
+  setResourceSuccess,
+} from "@/store/slices/resourceCacheSlice";
 
 const STORAGE_KEY = "pm_tool_active_team_id";
+const TEAMS_CACHE_KEY = "teams_list";
+const TEAMS_STALE_MS = 300_000;
 
 type Team = { id: string; name: string };
 
@@ -29,22 +37,55 @@ interface TeamContextValue {
 const TeamContext = createContext<TeamContextValue | undefined>(undefined);
 
 export function TeamProvider({ children }: { children: React.ReactNode }) {
+  const dispatch = useAppDispatch();
   const { user, loading: authLoading } = useAuth();
   const [teams, setTeams] = useState<Team[]>([]);
   const [activeTeamId, setActiveTeamIdState] = useState("");
   const [allTeamsMode, setAllTeamsMode] = useState(false);
   const [loading, setLoading] = useState(true);
+  const teamsCache = useAppSelector(
+    (state) => state.resourceCache.byKey[TEAMS_CACHE_KEY],
+  );
 
-  const refreshTeams = useCallback(async () => {
-    try {
-      const res = await fetch("/api/teams");
-      if (!res.ok) return;
-      const data: Team[] = await res.json();
-      setTeams(data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const refreshTeams = useCallback(
+    async (options?: { force?: boolean }) => {
+      const force = Boolean(options?.force);
+      const cachedData = Array.isArray(teamsCache?.data)
+        ? (teamsCache.data as Team[])
+        : null;
+      const hasFreshCache =
+        !force &&
+        cachedData &&
+        teamsCache?.fetchedAt &&
+        Date.now() - teamsCache.fetchedAt < TEAMS_STALE_MS;
+
+      if (hasFreshCache) {
+        setTeams(cachedData);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        dispatch(setResourcePending({ key: TEAMS_CACHE_KEY }));
+        const res = await fetch("/api/teams");
+        if (!res.ok) throw new Error("Failed to fetch teams");
+        const data: Team[] = await res.json();
+        setTeams(data);
+        dispatch(setResourceSuccess({ key: TEAMS_CACHE_KEY, data }));
+      } catch (error) {
+        dispatch(
+          setResourceFailed({
+            key: TEAMS_CACHE_KEY,
+            error:
+              error instanceof Error ? error.message : "Failed to fetch teams",
+          }),
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dispatch, teamsCache?.data, teamsCache?.fetchedAt],
+  );
 
   useEffect(() => {
     if (authLoading) return;
@@ -107,7 +148,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
 
     const unsubscribe = onRealtimeChange((detail) => {
       if (detail.table !== "Team") return;
-      void refreshTeams();
+      void refreshTeams({ force: true });
     });
 
     return unsubscribe;

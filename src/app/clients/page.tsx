@@ -17,6 +17,7 @@ import {
   Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SkeletonLine } from "@/components/ui/Skeleton";
 import { onRealtimeChange } from "@/lib/realtime-events";
 
 interface Client {
@@ -1030,9 +1031,10 @@ export default function ClientsPage() {
                   </div>
 
                   {loadingGithubRepos ? (
-                    <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
-                      Loading repositories...
-                    </p>
+                    <div className="space-y-2">
+                      <SkeletonLine className="h-9 w-full" />
+                      <SkeletonLine className="h-9 w-5/6" />
+                    </div>
                   ) : githubReposError ? (
                     <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
                       {githubReposError}

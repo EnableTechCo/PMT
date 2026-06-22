@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { SelectMenu } from "@/components/SelectMenu";
-import { Flag } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { SkeletonDropdown } from "@/components/ui/Skeleton";
 
 interface Sprint {
   id: string;
@@ -24,7 +23,7 @@ interface SprintSelectorProps {
 export function SprintSelector({
   ticketId,
   currentSprintId,
-  currentSprintName,
+  currentSprintName: _currentSprintName,
   teamId,
   onSprintChange,
   className,
@@ -86,27 +85,25 @@ export function SprintSelector({
 
   return (
     <div className={className}>
-      <SelectMenu
-        value={currentSprintId || "__backlog__"}
-        onChange={handleSprintChange}
-        disabled={disabled || loading || updating}
-        options={[
-          { value: "__backlog__", label: "Backlog" },
-          ...sprints.map((sprint) => ({
-            value: sprint.id,
-            label: `${sprint.name}`,
-          })),
-        ]}
-        size="sm"
-        placeholder={
-          loading
-            ? "Loading sprints..."
-            : updating
-              ? "Updating..."
-              : "Select sprint"
-        }
-        triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white text-xs"
-      />
+      {loading ? (
+        <SkeletonDropdown className="h-8 w-full" />
+      ) : (
+        <SelectMenu
+          value={currentSprintId || "__backlog__"}
+          onChange={handleSprintChange}
+          disabled={disabled || updating}
+          options={[
+            { value: "__backlog__", label: "Backlog" },
+            ...sprints.map((sprint) => ({
+              value: sprint.id,
+              label: `${sprint.name}`,
+            })),
+          ]}
+          size="sm"
+          placeholder={updating ? "Updating..." : "Select sprint"}
+          triggerClassName="border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white text-xs"
+        />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/contexts/TeamContext";
 import { SelectMenu } from "@/components/SelectMenu";
+import { SkeletonLine } from "@/components/ui/Skeleton";
 
 const inviteRoleOptions = [
   { value: "USER", label: "Admin" },
@@ -129,9 +130,7 @@ export default function AdminInvitePage() {
             disabled={role === "CLIENT"}
             className="w-full"
           />
-          {teamsLoading && (
-            <p className="text-xs text-gray-500 mt-1">Loading teams...</p>
-          )}
+          {teamsLoading && <SkeletonLine className="mt-2 h-3 w-28" />}
           {role === "CLIENT" && (
             <p className="text-xs text-gray-500 mt-1">
               Client invites are not tied to an internal team.

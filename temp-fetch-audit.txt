@@ -1,0 +1,149 @@
+﻿src\app\admin\invite\page.tsx:44:      const res = await fetch("/api/admin/invite", {
+src\app\docs\[id]\page.tsx:36:      const res = await fetch(`/api/docs/${id}`);
+src\app\docs\[id]\page.tsx:57:      const res = await fetch(`/api/docs/${id}`, {
+src\app\docs\[id]\page.tsx:74:      const res = await fetch(`/api/docs/${id}`, { method: "DELETE" });
+src\app\docs\page.tsx:137:      const response = await fetch(
+src\app\docs\page.tsx:338:      const res = await fetch("/api/docs", {
+src\components\CreateTicketModal.tsx:240:        fetch(`/api/sprints?teamId=${formData.teamId}`),
+src\components\CreateTicketModal.tsx:241:        fetch(`/api/teams/${formData.teamId}/members`),
+src\components\CreateTicketModal.tsx:242:        fetch(`/api/projects?teamId=${formData.teamId}`),
+src\components\CreateTicketModal.tsx:302:      const response = await fetch("/api/clients");
+src\app\dashboard\page.tsx:217:      const response = await fetch(
+src\app\dashboard\page.tsx:245:      const response = await fetch(`/api/sprints?teamId=${activeTeamId}`);
+src\app\dashboard\page.tsx:298:      const response = await fetch(`/api/tickets?${params}`);
+src\app\dashboard\page.tsx:372:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\app\dashboard\page.tsx:401:        const response = await fetch("/api/tickets", {
+src\app\client\dashboard\page.tsx:79:      const response = await fetch("/api/client/projects");
+src\app\client\dashboard\page.tsx:116:      const response = await fetch("/api/tickets");
+src\app\client\dashboard\page.tsx:127:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\contexts\TeamContext.tsx:69:      const res = await fetch("/api/teams");
+src\store\slices\notificationsSlice.ts:28:    const res = await fetch("/api/notifications");
+src\store\slices\notificationsSlice.ts:51:  const res = await fetch("/api/notifications", {
+src\store\slices\notificationsSlice.ts:65:  const res = await fetch("/api/notifications", {
+src\app\clients\page.tsx:110:      const response = await fetch("/api/clients");
+src\app\clients\page.tsx:133:      const response = await fetch("/api/clients", {
+src\app\clients\page.tsx:193:      const response = await fetch("/api/github/repos");
+src\app\clients\page.tsx:263:      const response = await fetch(`/api/clients/${editClient.id}`, {
+src\app\clients\page.tsx:301:      const response = await fetch(`/api/clients/${client.id}`, {
+src\app\clients\page.tsx:331:      const response = await fetch(`/api/clients/${client.id}/resend-invite`, {
+src\app\clients\page.tsx:358:      const response = await fetch(`/api/clients/${client.id}/reset-password`, {
+src\app\clients\page.tsx:405:      const response = await fetch(`/api/clients/${client.id}/projects`);
+src\app\clients\page.tsx:442:      const response = await fetch("/api/projects", {
+src\app\workload\page.tsx:252:      const response = await fetch(`/api/tickets?${params}`);
+src\app\workload\page.tsx:270:      const response = await fetch("/api/workload/users");
+src\app\workload\page.tsx:286:      const response = await fetch("/api/github/repos");
+src\app\workload\page.tsx:321:        const response = await fetch(`/api/github/pull-requests?${params}`);
+src\app\workload\page.tsx:412:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\app\workload\page.tsx:437:        const response = await fetch("/api/tickets", {
+src\app\workload\page.tsx:515:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\app\workload\page.tsx:536:      const response = await fetch("/api/tickets/selector-ids/backfill", {
+src\app\workload\page.tsx:582:      const response = await fetch("/api/github/pull-requests/assign", {
+src\app\projects\[id]\page.tsx:98:        const res = await fetch(`/api/projects/${id}`);
+src\app\projects\[id]\page.tsx:111:        const res = await fetch(projectTicketsUrl);
+src\app\projects\[id]\page.tsx:136:            fetch(`/api/projects/${id}`),
+src\app\projects\[id]\page.tsx:137:            fetch(projectTicketsUrl),
+src\app\projects\[id]\page.tsx:160:        const res = await fetch("/api/clients");
+src\app\projects\[id]\page.tsx:179:    const res = await fetch(`/api/milestones/${m.id}`, {
+src\app\projects\[id]\page.tsx:204:      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+src\app\projects\[id]\page.tsx:233:      const res = await fetch(`/api/projects/${id}`, {
+src\app\projects\[id]\page.tsx:275:      const createRes = await fetch("/api/clients", {
+src\app\projects\[id]\page.tsx:295:      const refreshedClientsRes = await fetch("/api/clients");
+src\app\projects\[id]\page.tsx:324:      const response = await fetch("/api/github/repos");
+src\app\projects\[id]\page.tsx:391:      const response = await fetch(`/api/projects/${id}`, {
+src\app\projects\page.tsx:60:      const res = await fetch("/api/clients");
+src\app\projects\page.tsx:101:      const res = await fetch(`/api/projects?${params}`);
+src\app\projects\page.tsx:125:        const res = await fetch("/api/projects", {
+src\app\workflows\page.tsx:127:      const res = await fetch("/api/github/repos");
+src\app\workflows\page.tsx:159:      const res = await fetch(
+src\app\workflows\page.tsx:204:      const res = await fetch("/api/github/workflows", {
+src\app\workflows\page.tsx:229:      const res = await fetch("/api/github/workflows/runs", {
+src\app\workflows\page.tsx:257:      const res = await fetch("/api/tickets/selector-ids/backfill", {
+src\app\workflows\page.tsx:302:      const res = await fetch("/api/github/pull-requests/assign", {
+src\contexts\AuthContext.tsx:38:      const response = await fetch("/api/auth/me");
+src\contexts\AuthContext.tsx:56:    const response = await fetch("/api/auth/login", {
+src\contexts\AuthContext.tsx:116:    const response = await fetch("/api/auth/login", {
+src\contexts\AuthContext.tsx:134:      await fetch("/api/auth/logout", { method: "POST" });
+src\app\tickets\page.tsx:280:        const response = await fetch("/api/workload/users");
+src\app\tickets\page.tsx:303:      const response = await fetch(`/api/teams/${activeTeamId}/members`);
+src\app\tickets\page.tsx:346:      const response = await fetch(`/api/sprints?teamId=${activeTeamId}`);
+src\app\tickets\page.tsx:402:      const response = await fetch(`/api/tickets?${params}`);
+src\app\tickets\page.tsx:469:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\app\tickets\page.tsx:526:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\app\tickets\page.tsx:565:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\app\tickets\page.tsx:603:        const response = await fetch("/api/tickets", {
+src\app\tickets\page.tsx:681:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\app\tickets\page.tsx:726:      const response = await fetch("/api/tickets/import", {
+src\app\auth\reset-password\page.tsx:61:      const response = await fetch("/api/auth/reset-password", {
+src\app\monitoring\page.tsx:99:      const res = await fetch(`/api/monitoring/sentry-inbox${query}`, {
+src\app\monitoring\alerts\page.tsx:81:        fetch("/api/notifications", { cache: "no-store" }),
+src\app\monitoring\alerts\page.tsx:82:        fetch("/api/monitoring/overview", { cache: "no-store" }),
+src\app\monitoring\alerts\page.tsx:129:    await fetch("/api/notifications", {
+src\app\feedback\page.tsx:51:        fetch(`/api/feedback?${params.toString()}`),
+src\app\feedback\page.tsx:52:        fetch("/api/workload/users"),
+src\app\feedback\page.tsx:91:      const response = await fetch(`/api/feedback/${feedbackId}/assign`, {
+src\app\auth\login\page.tsx:35:        await fetch("/api/auth/invite/activate", {
+src\app\executive\page.tsx:151:      const res = await fetch(`/api/analytics/executive${qs ? `?${qs}` : ""}`, {
+src\app\auth\invite\page.tsx:46:        const res = await fetch(
+src\app\auth\invite\page.tsx:97:      const res = await fetch("/api/auth/invite/accept", {
+src\app\settings\page.tsx:224:    fetch("/api/settings/notifications")
+src\app\settings\page.tsx:255:      const res = await fetch("/api/settings/notifications", {
+src\app\settings\page.tsx:334:      const res = await fetch("/api/settings/test-email", {
+src\app\settings\page.tsx:381:      const res = await fetch("/api/settings/smtp-diagnostic");
+src\app\settings\page.tsx:432:      const response = await fetch("/api/github/repos", {
+src\app\settings\page.tsx:493:          fetch(`/api/github/branches?owner=${owner}&repo=${repo}`),
+src\app\settings\page.tsx:494:          fetch(`/api/github/pull-requests?owner=${owner}&repo=${repo}`),
+src\app\settings\page.tsx:546:      const res = await fetch("/api/github/auth");
+src\app\settings\page.tsx:1748:      const res = await fetch("/api/github/auth", {
+src\app\settings\page.tsx:1783:      const res = await fetch("/api/github/auth", {
+src\app\settings\page.tsx:1815:      const res = await fetch("/api/github/auth?forceUserToken=1", {
+src\app\settings\page.tsx:1854:      const res = await fetch("/api/settings/backups?take=20");
+src\app\settings\page.tsx:1895:      const res = await fetch(`/api/settings/backups/${backup.id}`, {
+src\app\settings\page.tsx:1928:      const res = await fetch("/api/settings/backup?download=1", {
+src\app\settings\page.tsx:1973:      const res = await fetch("/api/settings/backup", {
+src\app\settings\page.tsx:2019:      const res = await fetch("/api/settings/backup/import", {
+src\app\auth\forgot-password\page.tsx:27:      const response = await fetch("/api/auth/forgot-password", {
+src\app\sentry-example-page\page.tsx:81:                const res = await fetch("/api/sentry-example-api");
+src\app\sprints\[id]\page.tsx:94:      const response = await fetch(`/api/sprints/${sprintId}`);
+src\app\sprints\[id]\page.tsx:124:      const response = await fetch(`/api/tickets?${params.toString()}`);
+src\app\sprints\[id]\page.tsx:163:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\app\sprints\[id]\page.tsx:191:        const response = await fetch("/api/tickets", {
+src\app\sprints\page.tsx:376:        fetch(`/api/sprints?teamId=${teamId}`),
+src\app\sprints\page.tsx:377:        fetch(`/api/tickets?teamId=${teamId}&backlogOnly=1`),
+src\app\sprints\page.tsx:397:          const response = await fetch(
+src\app\sprints\page.tsx:435:      const response = await fetch("/api/sprints", {
+src\app\sprints\page.tsx:476:      const response = await fetch(`/api/sprints/${sprintId}/${action}`, {
+src\app\sprints\page.tsx:538:      const response = await fetch(`/api/sprints/${editingSprintId}`, {
+src\app\teams\page.tsx:19:    const res = await fetch("/api/teams");
+src\app\teams\page.tsx:44:      const res = await fetch("/api/teams", {
+src\app\api\github\oauth\callback\route.ts:46:    const tokenRes = await fetch(
+src\app\api\monitoring\overview\route.ts:60:    const response = await fetch(
+src\components\TicketWorkspace.tsx:177:      const res = await fetch(`/api/tickets/${ticketId}`);
+src\components\TicketWorkspace.tsx:197:      const res = await fetch("/api/github/auth");
+src\components\TicketWorkspace.tsx:216:      const response = await fetch(`/api/tickets/${ticketId}/obligations`);
+src\components\TicketWorkspace.tsx:269:        fetch(`/api/teams/${teamId}/members`),
+src\components\TicketWorkspace.tsx:270:        fetch(`/api/sprints?teamId=${teamId}`),
+src\components\TicketWorkspace.tsx:366:          fetch(`/api/github/branches?owner=${repo.owner}&repo=${repo.name}`),
+src\components\TicketWorkspace.tsx:367:          fetch(
+src\components\TicketWorkspace.tsx:462:      const res = await fetch(
+src\components\TicketWorkspace.tsx:478:      const res = await fetch(
+src\components\TicketWorkspace.tsx:497:      const res = await fetch(url);
+src\components\TicketWorkspace.tsx:511:      const res = await fetch("/api/github/repos", {
+src\components\TicketWorkspace.tsx:540:      const res = await fetch("/api/github/branches", {
+src\components\TicketWorkspace.tsx:568:      const res = await fetch("/api/github/pull-requests", {
+src\components\TicketWorkspace.tsx:593:      const res = await fetch(`/api/github/branches?id=${id}`, {
+src\components\TicketWorkspace.tsx:604:      const res = await fetch(`/api/github/pull-requests?id=${id}`, {
+src\components\TicketWorkspace.tsx:662:      const res = await fetch(`/api/tickets/${ticketId}`, {
+src\components\TicketWorkspace.tsx:729:      const response = await fetch(`/api/tickets/${ticketId}/obligations`, {
+src\components\TicketWorkspace.tsx:751:    const response = await fetch(
+src\components\TicketWorkspace.tsx:768:    const res = await fetch(`/api/tickets/${ticketId}/comments`, {
+src\components\TicketWorkspace.tsx:787:      const res = await fetch(`/api/tickets/${ticketId}/attachments`, {
+src\components\TicketWorkspace.tsx:798:    const res = await fetch(`/api/tickets/${ticketId}`, { method: "DELETE" });
+src\components\SprintSelector.tsx:42:        const response = await fetch(`/api/sprints?teamId=${teamId}`);
+src\components\SprintSelector.tsx:66:      const response = await fetch(`/api/tickets/${ticketId}`, {
+src\app\teams\[teamId]\page.tsx:59:    const res = await fetch("/api/teams");
+src\app\teams\[teamId]\page.tsx:69:    const res = await fetch(`/api/teams/${teamId}/members`);
+src\app\teams\[teamId]\page.tsx:121:      const res = await fetch(endpoint, {
+src\app\teams\[teamId]\page.tsx:168:      const res = await fetch(
+src\app\teams\[teamId]\page.tsx:201:      const res = await fetch(
+src\app\teams\[teamId]\page.tsx:259:      const res = await fetch(`/api/teams/${teamId}/members/${member.userId}`, {
+src\app\api\monitoring\sentry-inbox\route.ts:342:    for await (const message of client.fetch(

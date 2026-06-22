@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { onRealtimeChange } from "@/lib/realtime-events";
+import { SkeletonDropdown, SkeletonTicketCard } from "@/components/ui/Skeleton";
+import { cachedGetJson } from "@/store/cacheClient";
 
 interface Ticket {
   id: string;
@@ -186,7 +188,7 @@ const priorityFilterOptions = [
 
 export default function WorkloadPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const { teams, activeTeamId, isAllTeams } = useTeam();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -227,85 +229,90 @@ export default function WorkloadPage() {
     })),
   ];
 
-  const fetchTickets = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      setError("");
-      const params = new URLSearchParams();
-      if (statusFilter) {
-        params.append("status", statusFilter);
-      }
-      if (priorityFilter) {
-        params.append("priority", priorityFilter);
-      }
-
-      if (user.role === "SUPER_ADMIN") {
-        if (selectedAssigneeId !== "__all__") {
-          params.set("assigneeId", selectedAssigneeId);
+  const fetchTickets = useCallback(
+    async (force = false) => {
+      if (!user) return;
+      try {
+        setLoading(true);
+        setError("");
+        const params = new URLSearchParams();
+        if (statusFilter) {
+          params.append("status", statusFilter);
         }
-      } else {
-        params.set("myWorkload", "1");
+        if (priorityFilter) {
+          params.append("priority", priorityFilter);
+        }
+
+        if (user.role === "SUPER_ADMIN") {
+          if (selectedAssigneeId !== "__all__") {
+            params.set("assigneeId", selectedAssigneeId);
+          }
+        } else {
+          params.set("myWorkload", "1");
+        }
+
+        const query = params.toString();
+        const data = await cachedGetJson<Ticket[]>({
+          key: `workload_tickets:${query || "all"}`,
+          url: `/api/tickets?${query}`,
+          staleMs: 30_000,
+          force,
+        });
+        setTickets(data);
+      } catch {
+        setError("Failed to fetch tickets");
+      } finally {
+        setLoading(false);
       }
+    },
+    [statusFilter, priorityFilter, user, selectedAssigneeId],
+  );
 
-      const response = await fetch(`/api/tickets?${params}`);
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch tickets");
+  const fetchWorkloadUsers = useCallback(
+    async (force = false) => {
+      if (!user || user.role !== "SUPER_ADMIN") return;
+      try {
+        const data = await cachedGetJson<WorkloadUser[]>({
+          key: "workload_users:super_admin",
+          url: "/api/workload/users",
+          staleMs: 120_000,
+          force,
+        });
+        setWorkloadUsers(Array.isArray(data) ? data : []);
+      } catch {
+        setWorkloadUsers([]);
       }
+    },
+    [user],
+  );
 
-      const data = await response.json();
-      setTickets(data);
-    } catch {
-      setError("Failed to fetch tickets");
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, priorityFilter, user, selectedAssigneeId]);
+  const fetchGithubRepos = useCallback(
+    async (force = false) => {
+      if (!user || user.role !== "SUPER_ADMIN") return;
 
-  const fetchWorkloadUsers = useCallback(async () => {
-    if (!user || user.role !== "SUPER_ADMIN") return;
-    try {
-      const response = await fetch("/api/workload/users");
-      if (!response.ok) {
-        throw new Error("Failed to fetch workload users");
-      }
-      const data = (await response.json()) as WorkloadUser[];
-      setWorkloadUsers(Array.isArray(data) ? data : []);
-    } catch {
-      setWorkloadUsers([]);
-    }
-  }, [user]);
-
-  const fetchGithubRepos = useCallback(async () => {
-    if (!user || user.role !== "SUPER_ADMIN") return;
-
-    try {
-      setGithubOptionsLoading(true);
-      const response = await fetch("/api/github/repos");
-      const body = await response.json().catch(() => []);
-
-      if (!response.ok) {
-        throw new Error(
-          typeof body?.error === "string"
-            ? body.error
+      try {
+        setGithubOptionsLoading(true);
+        const body = await cachedGetJson<GithubRepoItem[]>({
+          key: "workload_github_repos",
+          url: "/api/github/repos",
+          staleMs: 180_000,
+          force,
+        });
+        setGithubRepos(Array.isArray(body) ? body : []);
+      } catch (err) {
+        setGithubRepos([]);
+        setRepoPullRequests([]);
+        setOpsError(
+          err instanceof Error
+            ? err.message
             : "Failed to load GitHub repositories",
         );
+      } finally {
+        setGithubOptionsLoading(false);
       }
-
-      setGithubRepos(Array.isArray(body) ? (body as GithubRepoItem[]) : []);
-    } catch (err) {
-      setGithubRepos([]);
-      setRepoPullRequests([]);
-      setOpsError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load GitHub repositories",
-      );
-    } finally {
-      setGithubOptionsLoading(false);
-    }
-  }, [user]);
+    },
+    [user],
+  );
 
   const fetchRepoPullRequests = useCallback(
     async (owner: string, repo: string) => {
@@ -317,20 +324,13 @@ export default function WorkloadPage() {
       try {
         setGithubOptionsLoading(true);
         const params = new URLSearchParams({ owner, repo });
-        const response = await fetch(`/api/github/pull-requests?${params}`);
-        const body = await response.json().catch(() => []);
+        const body = await cachedGetJson<GithubPullRequestItem[]>({
+          key: `workload_repo_prs:${owner}/${repo}`,
+          url: `/api/github/pull-requests?${params}`,
+          staleMs: 30_000,
+        });
 
-        if (!response.ok) {
-          throw new Error(
-            typeof body?.error === "string"
-              ? body.error
-              : "Failed to load repository pull requests",
-          );
-        }
-
-        setRepoPullRequests(
-          Array.isArray(body) ? (body as GithubPullRequestItem[]) : [],
-        );
+        setRepoPullRequests(Array.isArray(body) ? body : []);
       } catch (err) {
         setRepoPullRequests([]);
         setOpsError(
@@ -346,17 +346,14 @@ export default function WorkloadPage() {
   );
 
   useEffect(() => {
-    if (!authLoading && user) {
-      void fetchTickets();
-    }
-  }, [statusFilter, priorityFilter, authLoading, user, fetchTickets]);
+    if (!user) return;
+    void fetchTickets();
+  }, [statusFilter, priorityFilter, user, fetchTickets]);
 
   useEffect(() => {
-    if (!authLoading && user?.role === "SUPER_ADMIN") {
-      void fetchWorkloadUsers();
-      void fetchGithubRepos();
-    }
-  }, [authLoading, user, fetchWorkloadUsers, fetchGithubRepos]);
+    if (user?.role !== "SUPER_ADMIN") return;
+    void Promise.all([fetchWorkloadUsers(), fetchGithubRepos()]);
+  }, [user, fetchWorkloadUsers, fetchGithubRepos]);
 
   useEffect(() => {
     const matchingRepos = githubRepos.filter(
@@ -390,13 +387,29 @@ export default function WorkloadPage() {
 
     const unsubscribe = onRealtimeChange((detail) => {
       if (detail.table !== "Ticket") return;
-      void fetchTickets();
+      void fetchTickets(true);
+      if (user.role === "SUPER_ADMIN") {
+        void fetchWorkloadUsers(true);
+      }
     });
 
     return unsubscribe;
-  }, [user, fetchTickets]);
+  }, [user, fetchTickets, fetchWorkloadUsers]);
 
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
+    let previousTicket: Ticket | null = null;
+    setTickets((prev) =>
+      prev.map((ticket) => {
+        if (ticket.id !== ticketId) return ticket;
+        previousTicket = ticket;
+        return {
+          ...ticket,
+          status: newStatus,
+          updatedAt: new Date().toISOString(),
+        };
+      }),
+    );
+
     try {
       const response = await fetch(`/api/tickets/${ticketId}`, {
         method: "PATCH",
@@ -409,9 +422,15 @@ export default function WorkloadPage() {
       if (!response.ok) {
         throw new Error("Failed to update ticket");
       }
-
-      fetchTickets();
-    } catch {}
+    } catch {
+      if (previousTicket) {
+        setTickets((prev) =>
+          prev.map((ticket) =>
+            ticket.id === ticketId ? previousTicket! : ticket,
+          ),
+        );
+      }
+    }
   };
 
   const handleCreateTicket = useCallback(
@@ -429,15 +448,21 @@ export default function WorkloadPage() {
           throw new Error("Failed to create ticket");
         }
 
-        const created = (await response.json()) as { id?: string };
-        await fetchTickets();
+        const created = (await response.json()) as Ticket & { id?: string };
+        if (created?.id) {
+          setTickets((prev) => {
+            const exists = prev.some((ticket) => ticket.id === created.id);
+            if (exists) return prev;
+            return [created, ...prev];
+          });
+        }
         return created;
       } catch (error) {
         console.error(error);
         return null;
       }
     },
-    [fetchTickets],
+    [],
   );
 
   useEffect(() => {
@@ -496,8 +521,7 @@ export default function WorkloadPage() {
       if (!response.ok) {
         throw new Error("Failed to delete ticket");
       }
-
-      fetchTickets();
+      setTickets((prev) => prev.filter((ticket) => ticket.id !== ticketId));
     } catch {}
   };
 
@@ -822,14 +846,6 @@ export default function WorkloadPage() {
     (ticket) => ticket.status === "CLIENT_REVIEW",
   ).length;
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="h-12 w-12 animate-spin rounded-full border-2 border-gray-200 border-t-brand-600 dark:border-gray-700"></div>
-      </div>
-    );
-  }
-
   if (!user) return null;
 
   return (
@@ -988,9 +1004,7 @@ export default function WorkloadPage() {
                   value={assignPrNumber}
                   onChange={setAssignPrNumber}
                   options={pullRequestOptions}
-                  placeholder={
-                    githubOptionsLoading ? "Loading PRs..." : "PR number"
-                  }
+                  placeholder="PR number"
                   searchable
                   searchPlaceholder="Search PR number or title"
                   disabled={
@@ -1007,9 +1021,7 @@ export default function WorkloadPage() {
                   value={assignOwner}
                   onChange={setAssignOwner}
                   options={ownerOptions}
-                  placeholder={
-                    githubOptionsLoading ? "Loading owners..." : "Owner"
-                  }
+                  placeholder="Owner"
                   searchable
                   searchPlaceholder="Search owner"
                   disabled={opsBusy || ownerOptions.length === 0}
@@ -1021,9 +1033,7 @@ export default function WorkloadPage() {
                   value={assignRepo}
                   onChange={setAssignRepo}
                   options={repoOptions}
-                  placeholder={
-                    githubOptionsLoading ? "Loading repos..." : "Repo"
-                  }
+                  placeholder="Repo"
                   searchable
                   searchPlaceholder="Search repo"
                   disabled={opsBusy || !assignOwner || repoOptions.length === 0}
@@ -1031,6 +1041,9 @@ export default function WorkloadPage() {
                   triggerClassName="text-xs"
                   size="sm"
                 />
+                {githubOptionsLoading ? (
+                  <SkeletonDropdown className="w-full sm:col-span-2" />
+                ) : null}
               </div>
               <button
                 type="button"
@@ -1119,8 +1132,10 @@ export default function WorkloadPage() {
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-brand-600 dark:border-gray-700"></div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 9 }).map((_, idx) => (
+              <SkeletonTicketCard key={`workload-ticket-skeleton-${idx}`} />
+            ))}
           </div>
         ) : isSuperAdmin ? (
           memberWorkloadCards.length === 0 ? (

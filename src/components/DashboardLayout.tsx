@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  type ComponentType,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
-  LayoutDashboard,
-  Briefcase,
-  Ticket,
-  Users2,
   Search,
   LogOut,
   Menu,
@@ -22,41 +24,593 @@ import {
   Moon,
   Sun,
   BarChart3,
-  FolderKanban,
-  Handshake,
   Bell,
-  FileText,
-  Activity,
+  GitPullRequest,
+  Ticket,
+  Rocket,
+  ShieldAlert,
+  MessageSquare,
+  Info,
+  ArrowUpRight,
+  Download,
+  Monitor,
+  Loader2,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useTeam } from "@/contexts/TeamContext";
 import { SelectMenu } from "@/components/SelectMenu";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { SkeletonLine } from "@/components/ui/Skeleton";
 import { onRealtimeChange } from "@/lib/realtime-events";
-
-interface AppNotification {
-  id: string;
-  type: string;
-  title: string;
-  body: string | null;
-  ticketId: string | null;
-  read: boolean;
-  createdAt: string;
-}
+import { AtomIcon } from "@/components/icons/atom-icon";
+import { SquareStackIcon } from "@/components/icons/square-stack-icon";
+import { TornadoIcon } from "@/components/icons/tornado-icon";
+import { CalendarCogIcon } from "@/components/icons/calendar-cog-icon";
+import { ReceiptTextIcon } from "@/components/icons/receipt-text-icon";
+import { FileTextIcon } from "@/components/icons/file-text-icon";
+import { FolderCodeIcon } from "@/components/icons/folder-code-icon";
+import { UsersIcon } from "@/components/icons/users-icon";
+import { WaypointsIcon } from "@/components/icons/waypoints-icon";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import {
+  fetchNotifications,
+  invalidateNotifications,
+  markAllNotificationsRead,
+  markNotificationsRead,
+  selectNotifications,
+  selectNotificationsStatus,
+} from "@/store/slices/notificationsSlice";
+import type { AppNotification } from "@/store/types";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
+type UpdateStatus =
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "downloaded"
+  | "error";
+
+type ElectronAPI = {
+  getPlatform: () => Promise<string>;
+  getAppVersion: () => Promise<string>;
+  onUpdateAvailable: (cb: (info: { version?: string }) => void) => () => void;
+  onUpdateDownloaded: (cb: (info: { version?: string }) => void) => () => void;
+  onUpdateProgress: (
+    cb: (progress: { percent?: number }) => void,
+  ) => () => void;
+  checkForUpdates: () => Promise<{ version: string | null }>;
+  installUpdate: () => Promise<void>;
+};
+
+// ── Notification grouping ────────────────────────────────────────────────────
+const NOTIF_GROUPS: {
+  key: string;
+  label: string;
+  match: (type: string) => boolean;
+}[] = [
+  {
+    key: "system",
+    label: "System updates",
+    match: (t) => t.startsWith("SYSTEM_") || t === "DEPLOYMENT_SUCCEEDED",
+  },
+  {
+    key: "review",
+    label: "Review activity",
+    match: (t) => t.startsWith("PR_") || t.startsWith("GH_"),
+  },
+  {
+    key: "workflow",
+    label: "Ticket activity",
+    match: (t) =>
+      [
+        "ASSIGNMENT",
+        "COMMENT",
+        "CHECKLIST",
+        "ATTACHMENT",
+        "CLIENT_OBLIGATION",
+        "TICKET_COMPLETED",
+        "CREATED",
+        "REPO_CONTEXT_INHERITED",
+        "GITHUB_REPO_CONTEXT",
+      ].includes(t),
+  },
+  {
+    key: "monitor",
+    label: "Monitoring alerts",
+    match: (t) => t.startsWith("MONITORING_"),
+  },
+  {
+    key: "feedback",
+    label: "Client messages",
+    match: (t) => t === "CLIENT_FEEDBACK",
+  },
+  { key: "other", label: "Other updates", match: () => true },
+];
+
+const GROUP_META: Record<
+  string,
+  { icon: React.ReactNode; accent: string; bg: string }
+> = {
+  system: {
+    icon: <Rocket className="h-3.5 w-3.5" />,
+    accent: "text-violet-600 dark:text-violet-400",
+    bg: "bg-violet-100 dark:bg-violet-500/15",
+  },
+  review: {
+    icon: <GitPullRequest className="h-3.5 w-3.5" />,
+    accent: "text-blue-600 dark:text-blue-400",
+    bg: "bg-blue-100 dark:bg-blue-500/15",
+  },
+  workflow: {
+    icon: <Ticket className="h-3.5 w-3.5" />,
+    accent: "text-emerald-600 dark:text-emerald-400",
+    bg: "bg-emerald-100 dark:bg-emerald-500/15",
+  },
+  monitor: {
+    icon: <ShieldAlert className="h-3.5 w-3.5" />,
+    accent: "text-red-600 dark:text-red-400",
+    bg: "bg-red-100 dark:bg-red-500/15",
+  },
+  feedback: {
+    icon: <MessageSquare className="h-3.5 w-3.5" />,
+    accent: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-100 dark:bg-amber-500/15",
+  },
+  other: {
+    icon: <Info className="h-3.5 w-3.5" />,
+    accent: "text-gray-500 dark:text-gray-400",
+    bg: "bg-gray-100 dark:bg-gray-700/40",
+  },
+};
+
+function groupNotifications(notifications: AppNotification[]) {
+  const result: { key: string; label: string; items: AppNotification[] }[] = [];
+  const placed = new Set<string>();
+  for (const group of NOTIF_GROUPS) {
+    const items = notifications.filter(
+      (n) => !placed.has(n.id) && group.match(n.type.trim().toUpperCase()),
+    );
+    if (items.length === 0) continue;
+    items.forEach((n) => placed.add(n.id));
+    result.push({ key: group.key, label: group.label, items });
+  }
+  return result;
+}
+
+function relativeTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "Just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
+function toFriendlyNotificationType(type: string): string {
+  const normalized = type.trim().toUpperCase();
+  if (!normalized) return "Update";
+
+  const exact: Record<string, string> = {
+    ASSIGNMENT: "Assigned to you",
+    COMMENT: "New comment",
+    CHECKLIST: "Checklist updated",
+    ATTACHMENT: "Attachment added",
+    CLIENT_OBLIGATION: "Client requirement updated",
+    TICKET_COMPLETED: "Ticket completed",
+    CREATED: "Ticket created",
+    REPO_CONTEXT_INHERITED: "Repository linked",
+    GITHUB_REPO_CONTEXT: "Repository context updated",
+    CLIENT_FEEDBACK: "Client feedback",
+    DEPLOYMENT_SUCCEEDED: "Deployment completed",
+    PR_OPENED: "Pull request opened",
+    PR_READY_FOR_REVIEW: "Ready for review",
+    PR_APPROVED: "Pull request approved",
+    PR_CHANGES_REQUESTED: "Changes requested",
+  };
+
+  if (exact[normalized]) return exact[normalized];
+  if (normalized.startsWith("SYSTEM_")) return "System update";
+  if (normalized.startsWith("PR_") || normalized.startsWith("GH_")) {
+    return "Code review update";
+  }
+  if (normalized.startsWith("MONITORING_")) return "Monitoring alert";
+
+  return normalized
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 type NavItem = {
   name: string;
   href: string;
-  icon: any;
+  icon: ComponentType<{ className?: string; size?: number }>;
   children?: NavItem[];
 };
 
+const sidebarIconAnimations: Record<string, { hover: any; transition: any }> = {
+  Dashboard: {
+    hover: { scale: 1.05 },
+    transition: { duration: 0.22, ease: "easeOut" },
+  },
+  Executive: {
+    hover: { scale: 1.1, rotate: -3 },
+    transition: { duration: 0.2, ease: "easeOut" },
+  },
+  Clients: {
+    hover: { rotate: [0, -7, 7, 0], scale: 1.05 },
+    transition: { duration: 0.35, ease: "easeOut" },
+  },
+  Workload: {
+    hover: { rotate: [0, -5, 5, 0], scale: 1.05 },
+    transition: { duration: 0.32, ease: "easeOut" },
+  },
+  Sprints: {
+    hover: { y: -3, rotate: -5, scale: 1.06 },
+    transition: { duration: 0.28, ease: "easeOut" },
+  },
+  Tickets: {
+    hover: { scale: [1, 1.12, 1], rotate: [0, -6, 0] },
+    transition: { duration: 0.3, ease: "easeOut" },
+  },
+  Docs: {
+    hover: { y: -2.5, rotate: -4, scale: 1.06 },
+    transition: { duration: 0.25, ease: "easeOut" },
+  },
+  Projects: {
+    hover: { rotate: [0, -6, 6, 0], scale: 1.07 },
+    transition: { duration: 0.32, ease: "easeOut" },
+  },
+  Teams: {
+    hover: { scale: [1, 1.12, 1], y: -2 },
+    transition: { duration: 0.3, ease: "easeOut" },
+  },
+  Workspace: {
+    hover: { scale: [1, 1.1, 1], rotate: -3 },
+    transition: { duration: 0.3, ease: "easeOut" },
+  },
+  Monitoring: {
+    hover: {
+      opacity: [1, 0.82, 1],
+      scale: [1, 1.12, 1],
+      rotate: [0, -4, 4, 0],
+    },
+    transition: { duration: 0.42, ease: "easeOut" },
+  },
+};
+
+function SidebarNavIcon({
+  icon: Icon,
+  itemName,
+  className,
+  isRowHovered,
+}: {
+  icon: ComponentType<{ className?: string; size?: number }>;
+  itemName: string;
+  className: string;
+  isRowHovered: boolean;
+}) {
+  const animation = sidebarIconAnimations[itemName] ?? {
+    hover: { scale: 1.06 },
+    transition: { duration: 0.2, ease: "easeOut" },
+  };
+
+  if (itemName === "Dashboard") {
+    return (
+      <AtomIcon
+        size={18}
+        externalAnimate={isRowHovered}
+        className={className}
+      />
+    );
+  }
+
+  if (itemName === "Clients") {
+    return (
+      <SquareStackIcon
+        size={18}
+        externalAnimate={isRowHovered}
+        className={className}
+      />
+    );
+  }
+
+  if (itemName === "Workload") {
+    return (
+      <TornadoIcon
+        size={18}
+        externalAnimate={isRowHovered}
+        className={className}
+      />
+    );
+  }
+
+  if (itemName === "Sprints") {
+    return (
+      <CalendarCogIcon
+        size={18}
+        externalAnimate={isRowHovered}
+        className={className}
+      />
+    );
+  }
+
+  if (itemName === "Tickets") {
+    return (
+      <ReceiptTextIcon
+        size={18}
+        externalAnimate={isRowHovered}
+        className={className}
+      />
+    );
+  }
+
+  if (itemName === "Docs") {
+    return (
+      <FileTextIcon
+        size={18}
+        externalAnimate={isRowHovered}
+        className={className}
+      />
+    );
+  }
+
+  if (itemName === "Projects") {
+    return (
+      <FolderCodeIcon
+        size={18}
+        externalAnimate={isRowHovered}
+        className={className}
+      />
+    );
+  }
+
+  if (itemName === "Teams") {
+    return (
+      <UsersIcon
+        size={18}
+        externalAnimate={isRowHovered}
+        className={className}
+      />
+    );
+  }
+
+  if (itemName === "Monitoring") {
+    return (
+      <UsersIcon
+        size={18}
+        externalAnimate={isRowHovered}
+        className={className}
+      />
+    );
+  }
+
+  return (
+    <motion.span
+      className="inline-flex shrink-0"
+      animate={
+        isRowHovered
+          ? animation.hover
+          : { scale: 1, x: 0, y: 0, rotate: 0, opacity: 1 }
+      }
+      transition={animation.transition}
+    >
+      <Icon className={className} size={18} />
+    </motion.span>
+  );
+}
+
+// ── Rich Notification Panel (accordion) ─────────────────────────────────────
+function NotificationPanel({
+  notifications,
+  loading,
+  unreadCount,
+  onMarkAllRead,
+  onMarkRead,
+  onNavigate,
+}: {
+  notifications: AppNotification[];
+  loading: boolean;
+  unreadCount: number;
+  onMarkAllRead: () => void;
+  onMarkRead: (ids: string[]) => void;
+  onNavigate: (ticketId: string | null) => void;
+}) {
+  const groups = groupNotifications(notifications);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(
+    () => new Set(groups.map((g) => g.key)),
+  );
+
+  const toggle = (key: string) =>
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+
+  return (
+    <div className="absolute right-0 top-12 z-50 flex w-[min(100vw-1rem,26rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700/60 dark:bg-[#16161f]">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+        <div className="flex items-center gap-2">
+          <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+          <span className="text-sm font-semibold text-gray-900 dark:text-white">
+            Notifications
+          </span>
+          {unreadCount > 0 && (
+            <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-brand-600 px-1.5 text-[10px] font-bold text-white">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </div>
+        {unreadCount > 0 && (
+          <button
+            type="button"
+            onClick={onMarkAllRead}
+            className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+          >
+            Mark all read
+          </button>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className="max-h-[32rem] overflow-y-auto">
+        {loading ? (
+          <div className="space-y-2 p-4">
+            <SkeletonLine className="h-9 w-full rounded-md" />
+            <SkeletonLine className="h-14 w-full rounded-lg" />
+            <SkeletonLine className="h-14 w-full rounded-lg" />
+            <SkeletonLine className="h-9 w-full rounded-md" />
+            <SkeletonLine className="h-14 w-full rounded-lg" />
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+            <Bell className="h-8 w-8 text-gray-300 dark:text-gray-600" />
+            <p className="text-sm font-medium text-gray-400 dark:text-gray-500">
+              You're all caught up
+            </p>
+          </div>
+        ) : (
+          groups.map((group) => {
+            const meta = GROUP_META[group.key] ?? GROUP_META.other;
+            const unread = group.items.filter((n) => !n.read).length;
+            const isOpen = openGroups.has(group.key);
+            return (
+              <div
+                key={group.key}
+                className="border-b border-gray-100 last:border-b-0 dark:border-gray-800"
+              >
+                {/* Accordion header */}
+                <button
+                  type="button"
+                  onClick={() => toggle(group.key)}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+                >
+                  <span
+                    className={cn(
+                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
+                      meta.bg,
+                      meta.accent,
+                    )}
+                  >
+                    {meta.icon}
+                  </span>
+                  <span className="flex-1 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {group.label}
+                  </span>
+                  {unread > 0 && (
+                    <span
+                      className={cn(
+                        "flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold",
+                        meta.bg,
+                        meta.accent,
+                      )}
+                    >
+                      {unread}
+                    </span>
+                  )}
+                  <ChevronDown
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-200",
+                      isOpen ? "rotate-180" : "",
+                    )}
+                  />
+                </button>
+
+                {/* Accordion body */}
+                {isOpen && (
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800/60">
+                    {group.items.map((n) => (
+                      <button
+                        type="button"
+                        key={n.id}
+                        onClick={() => {
+                          if (!n.read) onMarkRead([n.id]);
+                          onNavigate(n.ticketId);
+                        }}
+                        className={cn(
+                          "group relative flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.04]",
+                          !n.read &&
+                            "bg-brand-600/[0.05] dark:bg-brand-600/[0.09]",
+                        )}
+                      >
+                        {/* Unread dot */}
+                        {!n.read && (
+                          <span className="absolute left-2 top-4 h-1.5 w-1.5 rounded-full bg-brand-500" />
+                        )}
+
+                        {/* Icon bubble */}
+                        <span
+                          className={cn(
+                            "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+                            meta.bg,
+                            meta.accent,
+                          )}
+                        >
+                          {meta.icon}
+                        </span>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <p
+                              className={cn(
+                                "text-sm leading-snug text-gray-900 dark:text-white",
+                                !n.read ? "font-semibold" : "font-medium",
+                              )}
+                            >
+                              {n.title}
+                            </p>
+                            <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-gray-600" />
+                          </div>
+                          {n.body && (
+                            <p className="mt-0.5 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">
+                              {n.body}
+                            </p>
+                          )}
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                meta.bg,
+                                meta.accent,
+                              )}
+                            >
+                              {toFriendlyNotificationType(n.type)}
+                            </span>
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                              {relativeTime(n.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showQuickActions, setShowQuickActions] = useState(false);
@@ -70,9 +624,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [desktopNavGroups, setDesktopNavGroups] = useState<
     Record<string, boolean>
   >({});
+  const [hoveredNavItem, setHoveredNavItem] = useState<string | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [platform, setPlatform] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>("idle");
+  const [updatePercent, setUpdatePercent] = useState<number>(0);
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const [updateNote, setUpdateNote] = useState<string>("");
+  const notifications = useAppSelector(selectNotifications);
+  const notificationsStatus = useAppSelector(selectNotificationsStatus);
 
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -92,36 +653,46 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {
               name: "Dashboard",
               href: "/client/dashboard",
-              icon: LayoutDashboard,
+              icon: AtomIcon,
             },
           ]
         : user?.role === "SUPER_ADMIN"
           ? [
-              { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+              { name: "Dashboard", href: "/dashboard", icon: AtomIcon },
               { name: "Executive", href: "/executive", icon: BarChart3 },
-              { name: "Clients", href: "/clients", icon: Handshake },
+              { name: "Clients", href: "/clients", icon: SquareStackIcon },
               // { name: "Feedback", href: "/feedback", icon: Bell },
-              { name: "Workload", href: "/workload", icon: Briefcase },
-              { name: "Sprints", href: "/sprints", icon: Ticket },
-              { name: "Tickets", href: "/tickets", icon: Ticket },
-              { name: "Docs", href: "/docs", icon: FileText },
-              { name: "Projects", href: "/projects", icon: FolderKanban },
-              { name: "Teams", href: "/teams", icon: Users2 },
-              { name: "Monitoring", href: "/monitoring", icon: Activity },
+              { name: "Workload", href: "/workload", icon: TornadoIcon },
+              { name: "Sprints", href: "/sprints", icon: CalendarCogIcon },
+              { name: "Tickets", href: "/tickets", icon: ReceiptTextIcon },
+              { name: "Docs", href: "/docs", icon: FileTextIcon },
+              { name: "Projects", href: "/projects", icon: FolderCodeIcon },
+              { name: "Teams", href: "/teams", icon: UsersIcon },
+              { name: "Monitoring", href: "/monitoring", icon: UsersIcon },
             ]
           : [
-              { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-              { name: "Clients", href: "/clients", icon: Handshake },
+              { name: "Dashboard", href: "/dashboard", icon: AtomIcon },
+              { name: "Clients", href: "/clients", icon: SquareStackIcon },
               // { name: "Feedback", href: "/feedback", icon: Bell },
-              { name: "Workload", href: "/workload", icon: Briefcase },
-              { name: "Sprints", href: "/sprints", icon: Ticket },
-              { name: "Tickets", href: "/tickets", icon: Ticket },
-              { name: "Docs", href: "/docs", icon: FileText },
-              { name: "Projects", href: "/projects", icon: FolderKanban },
+              { name: "Workload", href: "/workload", icon: TornadoIcon },
+              { name: "Sprints", href: "/sprints", icon: CalendarCogIcon },
+              { name: "Tickets", href: "/tickets", icon: ReceiptTextIcon },
+              { name: "Docs", href: "/docs", icon: FileTextIcon },
+              { name: "Projects", href: "/projects", icon: FolderCodeIcon },
             ],
     [user?.role],
   );
   const pathname = usePathname();
+  const downloadUrl =
+    process.env.NEXT_PUBLIC_WINDOWS_DOWNLOAD_URL ||
+    "https://github.com/enable/project-management-tool/releases/latest";
+
+  const electronAPI: ElectronAPI | undefined =
+    typeof window !== "undefined"
+      ? (window as Window & { electronAPI?: ElectronAPI }).electronAPI
+      : undefined;
+  const isElectronRuntime = Boolean(electronAPI);
+  const isWindowsRuntime = platform === "win32";
 
   const isNavActive = useCallback(
     (item: NavItem): boolean => {
@@ -156,32 +727,64 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         (nav) => pathname === nav.href || pathname.startsWith(`${nav.href}/`),
       )?.name || "Workspace";
 
-  const loadNotifications = useCallback(async () => {
-    try {
-      const res = await fetch("/api/notifications");
-      if (!res.ok) return;
-      const data = (await res.json()) as AppNotification[];
-      setNotifications(Array.isArray(data) ? data : []);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
   useEffect(() => {
     if (!user || isClient) return;
-    void loadNotifications();
-  }, [user, isClient, pathname, loadNotifications]);
+    void dispatch(fetchNotifications());
+  }, [user, isClient, pathname, dispatch]);
 
   useEffect(() => {
     if (!user || isClient) return;
 
     const unsubscribe = onRealtimeChange((detail) => {
       if (detail.table !== "Notification") return;
-      void loadNotifications();
+      dispatch(invalidateNotifications());
+      void dispatch(fetchNotifications({ force: true }));
     });
 
     return unsubscribe;
-  }, [user, isClient, loadNotifications]);
+  }, [user, isClient, dispatch]);
+
+  useEffect(() => {
+    if (!electronAPI) return;
+
+    let mounted = true;
+    void electronAPI
+      .getPlatform()
+      .then((value) => {
+        if (mounted) setPlatform(value);
+      })
+      .catch(() => {
+        if (mounted) setPlatform(null);
+      });
+
+    const offAvailable = electronAPI.onUpdateAvailable((info) => {
+      setUpdateStatus("available");
+      setUpdateVersion(info?.version ?? null);
+      setUpdateNote("Update found. Downloading in background...");
+    });
+
+    const offProgress = electronAPI.onUpdateProgress((progress) => {
+      setUpdateStatus("downloading");
+      setUpdatePercent(
+        Math.max(0, Math.min(100, Math.round(progress?.percent ?? 0))),
+      );
+      setUpdateNote("Downloading update...");
+    });
+
+    const offDownloaded = electronAPI.onUpdateDownloaded((info) => {
+      setUpdateStatus("downloaded");
+      setUpdatePercent(100);
+      setUpdateVersion(info?.version ?? null);
+      setUpdateNote("Update downloaded. Restart to install.");
+    });
+
+    return () => {
+      mounted = false;
+      offAvailable?.();
+      offProgress?.();
+      offDownloaded?.();
+    };
+  }, [electronAPI]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const monitoringAlertCount = notifications.filter((n) => {
@@ -193,28 +796,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     );
   }).length;
 
-  const markNotificationsRead = async (ids: string[]) => {
+  const handleMarkNotificationsRead = async (ids: string[]) => {
     if (ids.length === 0) return;
     try {
-      await fetch("/api/notifications", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
-      await loadNotifications();
+      await dispatch(markNotificationsRead(ids));
     } catch {
       /* ignore */
     }
   };
 
-  const markAllNotificationsRead = async () => {
+  const handleMarkAllNotificationsRead = async () => {
     try {
-      await fetch("/api/notifications", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markAllRead: true }),
-      });
-      await loadNotifications();
+      await dispatch(markAllNotificationsRead());
     } catch {
       /* ignore */
     }
@@ -246,6 +839,40 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     if (searchQuery.trim()) {
       console.log("Searching for:", searchQuery);
     }
+  };
+
+  const handleHeaderDownloadClick = async () => {
+    if (isElectronRuntime && isWindowsRuntime) {
+      if (updateStatus === "downloaded") {
+        try {
+          await electronAPI?.installUpdate();
+        } catch {
+          setUpdateStatus("error");
+          setUpdateNote("Could not install update. Try again.");
+        }
+        return;
+      }
+
+      setUpdateStatus("checking");
+      setUpdateNote("Checking for updates...");
+      try {
+        const result = await electronAPI?.checkForUpdates();
+        if (result?.version) {
+          setUpdateStatus("available");
+          setUpdateVersion(result.version);
+          setUpdateNote("Update found. Downloading in background...");
+        } else {
+          setUpdateStatus("idle");
+          setUpdateNote("");
+        }
+      } catch {
+        setUpdateStatus("error");
+        setUpdateNote("Update check is unavailable in development mode.");
+      }
+      return;
+    }
+
+    window.open(downloadUrl, "_blank", "noopener,noreferrer");
   };
 
   if (!user) {
@@ -310,6 +937,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 return (
                   <div key={item.name} className="mb-1">
                     <div
+                      onMouseEnter={() => setHoveredNavItem(item.name)}
+                      onMouseLeave={() => setHoveredNavItem(null)}
                       className={cn(
                         "group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out",
                         isNavActive(item)
@@ -317,9 +946,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                           : "text-gray-600 hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
                       )}
                     >
-                      <item.icon
+                      <SidebarNavIcon
+                        icon={item.icon}
+                        itemName={item.name}
+                        isRowHovered={hoveredNavItem === item.name}
                         className={cn(
-                          "h-[18px] w-[18px] shrink-0",
+                          "h-[18px] w-[18px]",
                           isNavActive(item)
                             ? "text-brand-600 dark:text-brand-400"
                             : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
@@ -383,6 +1015,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <Link
                   key={item.name}
                   href={item.href}
+                  onMouseEnter={() => setHoveredNavItem(item.name)}
+                  onMouseLeave={() => setHoveredNavItem(null)}
                   className={cn(
                     "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out",
                     isActive
@@ -391,9 +1025,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   )}
                   onClick={() => setSidebarOpen(false)}
                 >
-                  <item.icon
+                  <SidebarNavIcon
+                    icon={item.icon}
+                    itemName={item.name}
+                    isRowHovered={hoveredNavItem === item.name}
                     className={cn(
-                      "h-[18px] w-[18px] shrink-0 transition-transform duration-200 ease-out group-hover:scale-110",
+                      "h-[18px] w-[18px]",
                       isActive
                         ? "text-gray-800 dark:text-brand-400"
                         : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
@@ -414,9 +1051,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <button
                   type="button"
                   onClick={() => setMobileWorkspaceOpen((prev) => !prev)}
+                  onMouseEnter={() => setHoveredNavItem("Workspace")}
+                  onMouseLeave={() => setHoveredNavItem(null)}
                   className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-all duration-200 ease-out hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white"
                 >
-                  <Users2 className="h-[18px] w-[18px] shrink-0 text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400" />
+                  <SidebarNavIcon
+                    icon={WaypointsIcon}
+                    itemName="Workspace"
+                    isRowHovered={hoveredNavItem === "Workspace"}
+                    className="h-[18px] w-[18px] text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400"
+                  />
                   <span className="flex-1 text-left">Workspace</span>
                   {mobileWorkspaceOpen ? (
                     <ChevronDown className="h-4 w-4 text-gray-500" />
@@ -428,9 +1072,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 {mobileWorkspaceOpen ? (
                   <div className="mt-2 space-y-2 rounded-lg border border-[var(--border)] bg-white/70 p-2 dark:border-gray-800 dark:bg-white/[0.03]">
                     {teamNavLoading ? (
-                      <p className="px-2 py-1 text-xs text-gray-500">
-                        Loading teams...
-                      </p>
+                      <div className="space-y-2 px-2 py-2">
+                        <SkeletonLine className="h-3 w-28" />
+                        <SkeletonLine className="h-3 w-full" />
+                        <SkeletonLine className="h-3 w-4/5" />
+                      </div>
                     ) : user.role === "SUPER_ADMIN" ? (
                       <>
                         <div className="flex items-center justify-between px-2">
@@ -572,6 +1218,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 return (
                   <div key={item.name} className="mb-1">
                     <div
+                      onMouseEnter={() => setHoveredNavItem(item.name)}
+                      onMouseLeave={() => setHoveredNavItem(null)}
                       className={cn(
                         "group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out",
                         isNavActive(item)
@@ -579,9 +1227,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                           : "text-gray-600 hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
                       )}
                     >
-                      <item.icon
+                      <SidebarNavIcon
+                        icon={item.icon}
+                        itemName={item.name}
+                        isRowHovered={hoveredNavItem === item.name}
                         className={cn(
-                          "h-[18px] w-[18px] shrink-0",
+                          "h-[18px] w-[18px]",
                           isNavActive(item)
                             ? "text-gray-800 dark:text-brand-400"
                             : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
@@ -640,6 +1291,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <Link
                   key={item.name}
                   href={item.href}
+                  onMouseEnter={() => setHoveredNavItem(item.name)}
+                  onMouseLeave={() => setHoveredNavItem(null)}
                   className={cn(
                     "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out mb-1",
                     isActive
@@ -647,9 +1300,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       : "text-gray-600 hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
                   )}
                 >
-                  <item.icon
+                  <SidebarNavIcon
+                    icon={item.icon}
+                    itemName={item.name}
+                    isRowHovered={hoveredNavItem === item.name}
                     className={cn(
-                      "h-[18px] w-[18px] shrink-0 transition-transform duration-200 ease-out group-hover:scale-110",
+                      "h-[18px] w-[18px]",
                       isActive
                         ? "text-brand-600 dark:text-brand-400"
                         : "text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400",
@@ -670,9 +1326,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <button
                   type="button"
                   onClick={() => setDesktopWorkspaceOpen((prev) => !prev)}
+                  onMouseEnter={() => setHoveredNavItem("Workspace")}
+                  onMouseLeave={() => setHoveredNavItem(null)}
                   className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-all duration-200 ease-out hover:bg-white/80 hover:text-gray-900 hover:shadow-sm dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-white"
                 >
-                  <Users2 className="h-[18px] w-[18px] shrink-0 text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400" />
+                  <SidebarNavIcon
+                    icon={WaypointsIcon}
+                    itemName="Workspace"
+                    isRowHovered={hoveredNavItem === "Workspace"}
+                    className="h-[18px] w-[18px] text-gray-500 group-hover:text-brand-600 dark:text-gray-500 dark:group-hover:text-brand-400"
+                  />
                   <span className="flex-1 text-left">Workspace</span>
                   {desktopWorkspaceOpen ? (
                     <ChevronDown className="h-4 w-4 text-gray-500" />
@@ -684,9 +1347,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 {desktopWorkspaceOpen ? (
                   <div className="mt-2 space-y-2 rounded-lg border border-[var(--border)] bg-white/70 p-2 dark:border-gray-800 dark:bg-white/[0.03]">
                     {teamNavLoading ? (
-                      <p className="px-2 py-1 text-xs text-gray-500">
-                        Loading teams...
-                      </p>
+                      <div className="space-y-2 px-2 py-2">
+                        <SkeletonLine className="h-3 w-28" />
+                        <SkeletonLine className="h-3 w-full" />
+                        <SkeletonLine className="h-3 w-4/5" />
+                      </div>
                     ) : user.role === "SUPER_ADMIN" ? (
                       <>
                         <div className="flex items-center justify-between px-2">
@@ -832,7 +1497,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Top bar */}
       <div className="lg:pl-64">
-        <div className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--surface-elevated)]/95 backdrop-blur-md dark:border-gray-800 dark:bg-[#16161c]/95">
+        <div className="fixed left-0 right-0 top-0 z-40 border-b border-[var(--border)] bg-[var(--surface-elevated)]/95 backdrop-blur-md dark:border-gray-800 dark:bg-[#16161c]/95 lg:left-64">
           <div className="flex items-center justify-between px-4 py-3 sm:px-6">
             {/* Left side - Navigation and Search */}
             <div className="flex items-center space-x-6">
@@ -880,6 +1545,36 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
             {/* Right side - Actions and User */}
             <div className="flex items-center space-x-4">
+              <button
+                type="button"
+                onClick={() => {
+                  void handleHeaderDownloadClick();
+                }}
+                className="group inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900/80 dark:text-gray-200 dark:hover:bg-gray-900"
+                title={
+                  isElectronRuntime && isWindowsRuntime
+                    ? updateStatus === "downloaded"
+                      ? "Restart and install update"
+                      : "Check for updates"
+                    : "Download for Windows"
+                }
+              >
+                {updateStatus === "checking" ||
+                updateStatus === "downloading" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                <Monitor className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                <span className="hidden sm:inline">
+                  {isElectronRuntime && isWindowsRuntime
+                    ? updateStatus === "downloaded"
+                      ? "Restart to Update"
+                      : "Windows Update"
+                    : "Windows App"}
+                </span>
+              </button>
+
               {user?.role !== "SUPER_ADMIN" && !isClient ? (
                 <div className="relative">
                   <button
@@ -889,7 +1584,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       setShowUserMenu(false);
                       setNotifOpen((prev) => {
                         const next = !prev;
-                        if (next) void loadNotifications();
+                        if (next) void dispatch(fetchNotifications());
                         return next;
                       });
                     }}
@@ -905,64 +1600,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </button>
 
                   {notifOpen ? (
-                    <div className="absolute right-0 top-12 z-50 w-[min(100vw-2rem,22rem)] overflow-hidden rounded-lg border border-[var(--border)] bg-white shadow-card dark:border-gray-700 dark:bg-[#1c1c24]">
-                      <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2 dark:border-gray-700">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                          Notifications
-                        </p>
-                        {unreadCount > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => void markAllNotificationsRead()}
-                            className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
-                          >
-                            Mark all read
-                          </button>
-                        ) : null}
-                      </div>
-                      <div className="max-h-80 overflow-y-auto">
-                        {notifications.length === 0 ? (
-                          <p className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                            No notifications yet
-                          </p>
-                        ) : (
-                          notifications.map((n) => (
-                            <button
-                              type="button"
-                              key={n.id}
-                              onClick={() => {
-                                void (async () => {
-                                  if (!n.read) {
-                                    await markNotificationsRead([n.id]);
-                                  }
-                                  setNotifOpen(false);
-                                  if (n.ticketId) {
-                                    router.push(`/tickets/${n.ticketId}`);
-                                  }
-                                })();
-                              }}
-                              className={cn(
-                                "w-full border-b border-[var(--border)] px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5",
-                                !n.read &&
-                                  "bg-brand-600/[0.06] dark:bg-brand-600/10",
-                              )}
-                            >
-                              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                {n.title}
-                              </p>
-                              {n.body ? (
-                                <p className="mt-0.5 line-clamp-2 text-xs text-gray-600 dark:text-gray-400">
-                                  {n.body}
-                                </p>
-                              ) : null}
-                              <p className="mt-1 text-[11px] text-gray-400">
-                                {new Date(n.createdAt).toLocaleString()}
-                              </p>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
+                    <NotificationPanel
+                      notifications={notifications}
+                      loading={notificationsStatus === "loading"}
+                      unreadCount={unreadCount}
+                      onMarkAllRead={() =>
+                        void handleMarkAllNotificationsRead()
+                      }
+                      onMarkRead={(ids) =>
+                        void handleMarkNotificationsRead(ids)
+                      }
+                      onNavigate={(ticketId) => {
+                        setNotifOpen(false);
+                        if (ticketId) router.push(`/tickets/${ticketId}`);
+                      }}
+                    />
                   ) : null}
                 </div>
               ) : null}
@@ -1003,11 +1655,56 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
             </div>
           </div>
+
+          {updateStatus !== "idle" && (
+            <div className="flex items-center justify-between gap-3 border-t border-gray-200/80 bg-gradient-to-r from-sky-50 to-cyan-50 px-4 py-2 text-xs dark:border-gray-800 dark:from-sky-950/25 dark:to-cyan-950/20 sm:px-6">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-sky-900 dark:text-sky-200">
+                  {updateStatus === "checking" && "Checking for updates"}
+                  {updateStatus === "available" && "Update available"}
+                  {updateStatus === "downloading" &&
+                    `Downloading update ${updatePercent}%`}
+                  {updateStatus === "downloaded" && "Ready to install"}
+                  {updateStatus === "error" && "Update check failed"}
+                  {updateVersion ? ` v${updateVersion}` : ""}
+                </p>
+                {updateNote ? (
+                  <p className="truncate text-sky-700 dark:text-sky-300/90">
+                    {updateNote}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2">
+                {updateStatus === "downloaded" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleHeaderDownloadClick();
+                    }}
+                    className="rounded-md bg-sky-600 px-2 py-1 font-semibold text-white hover:bg-sky-700"
+                  >
+                    Restart now
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUpdateStatus("idle");
+                    setUpdateNote("");
+                    setUpdatePercent(0);
+                  }}
+                  className="rounded-md border border-sky-300 px-2 py-1 font-medium text-sky-800 hover:bg-sky-100 dark:border-sky-700 dark:text-sky-200 dark:hover:bg-sky-900/30"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+      <div className="pt-[73px] lg:pl-64">
         {/* Page content */}
         <main className="p-6">{children}</main>
       </div>

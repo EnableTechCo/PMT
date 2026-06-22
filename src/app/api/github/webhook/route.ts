@@ -311,7 +311,7 @@ async function notifyQa(
   }
 }
 
-async function notifyPm(
+async function _notifyPm(
   ticket: LinkedTicket,
   input: { type: string; title: string; body?: string },
 ) {
@@ -327,6 +327,26 @@ async function notifyPm(
       title: input.title,
       body: input.body,
       ticketId: ticket.id,
+    });
+  }
+}
+
+async function notifyInternalUsers(input: {
+  type: string;
+  title: string;
+  body?: string;
+}) {
+  const internalUsers = await db.user.findMany({
+    where: { role: { in: ["USER", "SUPER_ADMIN"] } },
+    select: { id: true },
+  });
+
+  for (const internalUser of internalUsers as Array<{ id: string }>) {
+    await notifyIfMissing({
+      userId: internalUser.id,
+      type: input.type,
+      title: input.title,
+      body: input.body,
     });
   }
 }
@@ -356,6 +376,7 @@ export async function POST(request: NextRequest) {
             merged?: boolean;
             merged_at?: string | null;
             head?: { ref?: string; sha?: string };
+            base?: { ref?: string };
             user?: { login?: string };
           }
         | undefined;
@@ -375,6 +396,7 @@ export async function POST(request: NextRequest) {
           ? body.repository.full_name
           : "";
       const branchRef = pr.head?.ref ?? "";
+      const targetRef = pr.base?.ref ?? "";
       const selectorId = parseSelectorIdFromBranch(branchRef);
       const prState = pr.merged || pr.merged_at ? "merged" : pr.state || "open";
 
@@ -394,6 +416,24 @@ export async function POST(request: NextRequest) {
           if (!linkedTickets.some((ticket) => ticket.id === matchedTicket.id)) {
             linkedTickets = [...linkedTickets, matchedTicket as LinkedTicket];
           }
+        }
+      }
+
+      if (action === "closed" && (pr.merged || pr.merged_at)) {
+        if (targetRef === "develop") {
+          await notifyInternalUsers({
+            type: "SYSTEM_DEV_BRANCH_UPDATED",
+            title: `Develop updated from merged PR: ${pr.title || `#${pr.number}`}`,
+            body: `${repoFullName || "Repository"} -> develop\n${pr.html_url || ""}`,
+          });
+        }
+
+        if (targetRef === "main") {
+          await notifyInternalUsers({
+            type: "SYSTEM_RELEASE_STABLE_PUBLISHED",
+            title: `Main updated (stable release): ${pr.title || `#${pr.number}`}`,
+            body: `${repoFullName || "Repository"} -> main\n${pr.html_url || ""}`,
+          });
         }
       }
 
@@ -430,12 +470,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (
-          [
-            "opened",
-            "review_requested",
-            "ready_for_review",
-            "synchronize",
-          ].includes(action)
+          ["opened", "review_requested", "ready_for_review"].includes(action)
         ) {
           await notifyAssignee(ticket, {
             type: "PR_REVIEW_REQUESTED",
@@ -445,9 +480,33 @@ export async function POST(request: NextRequest) {
         }
 
         if (action === "closed" && (pr.merged || pr.merged_at)) {
-          await notifyPm(ticket, {
+          await notifyQa(ticket, {
             type: "PR_MERGED",
             title: `PR merged: ${pr.title || `#${pr.number}`}`,
+            body: pr.html_url || undefined,
+          });
+        }
+
+        if (action === "closed" && !(pr.merged || pr.merged_at)) {
+          await updateTicketStatusIfChanged(
+            ticket,
+            TicketStatus.REVISIONS,
+            `PR closed without merge: ${pr.title || `#${pr.number}`}`,
+            {
+              source: "github_webhook",
+              event,
+              action,
+              prNumber: pr.number,
+              prUrl: pr.html_url,
+              branchRef,
+              repo: repoFullName,
+              autoStatus: TicketStatus.REVISIONS,
+            },
+          );
+
+          await notifyAssignee(ticket, {
+            type: "PR_CLOSED_UNMERGED",
+            title: `PR closed without merge: ${pr.title || `#${pr.number}`}`,
             body: pr.html_url || undefined,
           });
         }
@@ -506,6 +565,7 @@ export async function POST(request: NextRequest) {
         linkedTickets: linkedTickets.map((ticket) => ticket.id),
         selectorId,
         branchRef,
+        targetRef,
         statusMappedTo: nextStatus,
       });
     }
@@ -591,8 +651,11 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        if (reviewState === "approved" && owner && repo && sha) {
-          const checks = await fetchCheckSummary({ owner, repo, ref: sha });
+        if (reviewState === "approved") {
+          const checks =
+            owner && repo && sha
+              ? await fetchCheckSummary({ owner, repo, ref: sha })
+              : { allGreen: false, failing: [], pending: [] };
 
           await logGithubActivity({
             ticketId: ticket.id,
@@ -611,31 +674,26 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          if (checks.allGreen) {
-            await updateTicketStatusIfChanged(
-              ticket,
-              TicketStatus.QA,
-              `PR #${prNumber} approved and checks green`,
-              {
-                source: "github_webhook",
-                event,
-                prNumber,
-                autoStatus: TicketStatus.QA,
-              },
-            );
+          await updateTicketStatusIfChanged(
+            ticket,
+            TicketStatus.QA,
+            checks.allGreen
+              ? `PR #${prNumber} approved and moved to QA`
+              : `PR #${prNumber} approved (checks pending/failing) and moved to QA`,
+            {
+              source: "github_webhook",
+              event,
+              prNumber,
+              autoStatus: TicketStatus.QA,
+              allGreen: owner && repo && sha ? checks.allGreen : null,
+            },
+          );
 
-            await notifyQa(ticket, {
-              type: "PR_READY_FOR_QA",
-              title: `Ready for QA: PR #${prNumber}`,
-              body: body.pull_request?.html_url || undefined,
-            });
-          } else {
-            await notifyAssignee(ticket, {
-              type: "PR_CHECKS_FAILED",
-              title: `Checks not green for PR #${prNumber}`,
-              body: checks.failing.map((check) => check.name).join(", "),
-            });
-          }
+          await notifyQa(ticket, {
+            type: "PR_READY_FOR_QA",
+            title: `Ready for QA: PR #${prNumber}`,
+            body: body.pull_request?.html_url || undefined,
+          });
         }
       }
 
@@ -692,6 +750,76 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (event === "push") {
+      const branchRefRaw = typeof body.ref === "string" ? body.ref : "";
+      const branchRef = branchRefRaw.startsWith("refs/heads/")
+        ? branchRefRaw.slice("refs/heads/".length)
+        : branchRefRaw;
+      const selectorId = parseSelectorIdFromBranch(branchRef);
+      const selectorTicket = await resolveTicketBySelector(selectorId);
+
+      if (!selectorTicket) {
+        return NextResponse.json({ ok: true, ignored: true });
+      }
+
+      const ticket = selectorTicket as LinkedTicket;
+      const commitCount = Array.isArray(body.commits) ? body.commits.length : 0;
+      const pusher =
+        typeof body.pusher?.name === "string"
+          ? body.pusher.name
+          : typeof body.sender?.login === "string"
+            ? body.sender.login
+            : "unknown";
+
+      await logGithubActivity({
+        ticketId: ticket.id,
+        actorId: ticket.creatorId,
+        type: "GH_PUSH",
+        summary: `Push to ${branchRef || "branch"} (${commitCount} commit${commitCount === 1 ? "" : "s"})`,
+        metadata: {
+          source: "github_webhook",
+          event,
+          selectorId,
+          branchRef,
+          commitCount,
+          pusher,
+        },
+      });
+
+      const targetStatus =
+        ticket.status === TicketStatus.REVISIONS
+          ? TicketStatus.IN_REVIEW
+          : ticket.status === TicketStatus.BACKLOG ||
+              ticket.status === TicketStatus.TODO ||
+              ticket.status === TicketStatus.REFINE
+            ? TicketStatus.IN_PROGRESS
+            : null;
+
+      if (targetStatus) {
+        await updateTicketStatusIfChanged(
+          ticket,
+          targetStatus,
+          `Auto-moved to ${targetStatus === TicketStatus.IN_PROGRESS ? "In Progress" : "In Review"} from push activity`,
+          {
+            source: "github_webhook",
+            event,
+            selectorId,
+            branchRef,
+            autoStatus: targetStatus,
+            commitCount,
+          },
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        linkedTicket: ticket.id,
+        selectorId,
+        branchRef,
+        statusMappedTo: targetStatus,
+      });
+    }
+
     if (event === "check_run") {
       const action = typeof body.action === "string" ? body.action : "";
       const checkRun = body.check_run;
@@ -732,19 +860,6 @@ export async function POST(request: NextRequest) {
             branchRef,
           },
         });
-
-        const conclusion = String(checkRun?.conclusion || "").toLowerCase();
-        if (
-          checkRun?.status === "completed" &&
-          conclusion &&
-          !CHECK_PASSING.has(conclusion)
-        ) {
-          await notifyAssignee(ticket, {
-            type: "PR_CHECKS_FAILED",
-            title: `Check failed: ${checkRun?.name || "GitHub check"}`,
-            body: checkRun?.html_url || undefined,
-          });
-        }
       }
 
       return NextResponse.json({
@@ -829,17 +944,6 @@ export async function POST(request: NextRequest) {
           url: deploymentStatus?.target_url || deploymentStatus?.log_url,
         },
       });
-
-      if (deploymentStatus?.state === "success") {
-        await notifyPm(ticket, {
-          type: "DEPLOYMENT_SUCCEEDED",
-          title: `Deployment succeeded${deploymentStatus?.environment ? ` (${deploymentStatus.environment})` : ""}`,
-          body:
-            deploymentStatus?.target_url ||
-            deploymentStatus?.log_url ||
-            undefined,
-        });
-      }
 
       return NextResponse.json({ ok: true, linkedTicket: ticket.id });
     }

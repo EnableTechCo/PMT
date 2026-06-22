@@ -1,0 +1,51 @@
+﻿src\app\dashboard\page.tsx:190:  const [loadingSprints, setLoadingSprints] = useState(false);
+src\app\dashboard\page.tsx:618:            {loadingSprints ? (
+src\app\dashboard\page.tsx:624:                disabled={loadingSprints}
+src\app\dashboard\page.tsx:761:                  {loadingSprints ? (
+src\app\dashboard\page.tsx:767:                      disabled={loadingSprints}
+src\app\dashboard\page.tsx:853:                  {loadingSprints ? (
+src\app\dashboard\page.tsx:859:                      disabled={loadingSprints}
+src\app\clients\page.tsx:68:  const [loadingClientProjects, setLoadingClientProjects] = useState(false);
+src\app\clients\page.tsx:92:  const [loadingGithubRepos, setLoadingGithubRepos] = useState(false);
+src\app\clients\page.tsx:1033:                  {loadingGithubRepos ? (
+src\app\clients\page.tsx:1214:                {loadingClientProjects ? (
+src\components\CreateTicketModal.tsx:140:  const [isLoadingClients, setIsLoadingClients] = useState(false);
+src\components\CreateTicketModal.tsx:141:  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+src\components\CreateTicketModal.tsx:142:  const [isLoadingAssignees, setIsLoadingAssignees] = useState(false);
+src\components\CreateTicketModal.tsx:144:  const [isLoadingSprints, setIsLoadingSprints] = useState(false);
+src\components\CreateTicketModal.tsx:562:              {isLoadingAssignees ? (
+src\components\CreateTicketModal.tsx:580:                  disabled={isLoadingAssignees}
+src\components\CreateTicketModal.tsx:601:                disabled={!teamIdValue || isLoadingSprints}
+src\components\CreateTicketModal.tsx:619:              {isLoadingSprints ? (
+src\components\CreateTicketModal.tsx:628:              {isLoadingClients ? (
+src\components\CreateTicketModal.tsx:657:                  disabled={isLoadingClients || safeClients.length === 0}
+src\components\CreateTicketModal.tsx:672:              {isLoadingProjects ? (
+src\components\CreateTicketModal.tsx:680:                  disabled={!canSelectProject || isLoadingProjects}
+src\components\TicketWorkspace.tsx:155:  const [loadingRepos, setLoadingRepos] = useState(false);
+src\components\TicketWorkspace.tsx:156:  const [loadingBranches, setLoadingBranches] = useState(false);
+src\components\TicketWorkspace.tsx:157:  const [loadingPRs, setLoadingPRs] = useState(false);
+src\components\TicketWorkspace.tsx:159:  const [loadingAssignableUsers, setLoadingAssignableUsers] = useState(false);
+src\components\TicketWorkspace.tsx:161:  const [loadingSprints, setLoadingSprints] = useState(false);
+src\components\TicketWorkspace.tsx:1994:                  {loadingAssignableUsers ? (
+src\components\TicketWorkspace.tsx:2027:                  {loadingSprints ? (
+src\components\TicketWorkspace.tsx:2162:              {loadingBranches ? (
+src\components\TicketWorkspace.tsx:2226:              {loadingPRs ? (
+src\components\TicketWorkspace.tsx:2336:                {loadingRepos ? (
+src\app\projects\page.tsx:47:  const [loadingClients, setLoadingClients] = useState(false);
+src\app\projects\page.tsx:417:                  {loadingClients && (
+src\app\projects\[id]\page.tsx:72:  const [loadingClients, setLoadingClients] = useState(false);
+src\app\projects\[id]\page.tsx:82:  const [loadingGithubRepos, setLoadingGithubRepos] = useState(false);
+src\app\projects\[id]\page.tsx:616:                  {loadingClients ? (
+src\app\projects\[id]\page.tsx:621:                    disabled={assigningClient || loadingClients}
+src\app\projects\[id]\page.tsx:731:              {loadingGithubRepos ? (
+src\app\projects\[id]\page.tsx:758:              {!loadingGithubRepos &&
+src\app\projects\[id]\page.tsx:786:                    disabled={savingGithubRepos || loadingGithubRepos}
+src\app\tickets\page.tsx:242:  const [loadingSprints, setLoadingSprints] = useState(false);
+src\app\tickets\page.tsx:913:                    loadingSprints ||
+src\app\tickets\page.tsx:925:                {loadingSprints ? (
+src\app\workflows\page.tsx:74:  const [loadingRepos, setLoadingRepos] = useState(false);
+src\app\workflows\page.tsx:75:  const [loadingWorkflows, setLoadingWorkflows] = useState(false);
+src\app\workflows\page.tsx:463:                disabled={loadingRepos || repos.length === 0}
+src\app\workflows\page.tsx:522:              disabled={loadingWorkflows || !owner || !repo}
+src\app\workflows\page.tsx:524:              {loadingWorkflows ? "Loading..." : "Refresh Workflows"}
+src\app\workflows\page.tsx:562:          {loadingWorkflows ? (

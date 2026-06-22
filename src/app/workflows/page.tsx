@@ -5,6 +5,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { MonitoringTabs } from "@/components/MonitoringTabs";
 import { SelectMenu } from "@/components/SelectMenu";
 import { useAuth } from "@/contexts/AuthContext";
+import { SkeletonLine } from "@/components/ui/Skeleton";
 import {
   CheckCircle2,
   Circle,
@@ -559,8 +560,11 @@ export default function WorkflowsPage() {
           </div>
 
           {loadingWorkflows ? (
-            <div className="flex items-center gap-2 p-6 text-sm text-gray-600 dark:text-gray-300">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading workflows...
+            <div className="space-y-px">
+              <SkeletonLine className="h-14 w-full rounded-none" />
+              <SkeletonLine className="h-14 w-full rounded-none" />
+              <SkeletonLine className="h-14 w-full rounded-none" />
+              <SkeletonLine className="h-14 w-full rounded-none" />
             </div>
           ) : workflows.length === 0 ? (
             <div className="p-6 text-sm text-gray-500">

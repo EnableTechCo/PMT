@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { SelectMenu } from "@/components/SelectMenu";
+import { SkeletonLine } from "@/components/ui/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface FeedbackItem {
@@ -145,8 +146,10 @@ export default function FeedbackPage() {
         </div>
 
         {loading ? (
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 text-sm text-gray-500">
-            Loading feedback...
+          <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6">
+            <SkeletonLine className="h-4 w-1/3" />
+            <SkeletonLine className="h-4 w-full" />
+            <SkeletonLine className="h-4 w-5/6" />
           </div>
         ) : visible.length === 0 ? (
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 text-sm text-gray-500">
