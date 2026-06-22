@@ -2174,6 +2174,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                         title={a.filename}
                       >
                         {isImageAttachment(a) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={a.url}
                             alt={a.filename}
@@ -2252,6 +2253,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
 
               <div className="flex h-full items-center justify-center p-4">
                 {isImageAttachment(t.attachments![activeAttachmentIndex]) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={t.attachments![activeAttachmentIndex].url}
                     alt={t.attachments![activeAttachmentIndex].filename}
@@ -2303,6 +2305,7 @@ export default function TicketWorkspace({ ticketId }: { ticketId: string }) {
                       )}
                     >
                       {isImageAttachment(a) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={a.url}
                           alt={a.filename}

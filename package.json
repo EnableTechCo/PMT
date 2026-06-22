@@ -77,7 +77,7 @@
     "lucide-react": "^0.525.0",
     "next": "15.5.18",
     "next-remove-imports": "^1.0.13",
-    "nodemailer": "^7.0.13",
+    "nodemailer": "^9.0.1",
     "octokit": "^5.0.5",
     "radix-ui": "^1.4.3",
     "react": "19.1.0",
@@ -120,9 +120,16 @@
   },
   "pnpm": {
     "overrides": {
+      "@opentelemetry/core": ">=2.8.0",
+      "cookie": ">=0.7.0",
       "esbuild": ">=0.28.1",
       "form-data": ">=4.0.6",
-      "hono": ">=4.12.25"
+      "hono": ">=4.12.25",
+      "js-yaml": ">=4.2.0",
+      "nodemailer": ">=9.0.1",
+      "postcss": ">=8.5.10",
+      "react-router": ">=6.30.4",
+      "react-router-dom": ">=6.30.4"
     }
   }
 }

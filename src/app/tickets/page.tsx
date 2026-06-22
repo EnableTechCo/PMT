@@ -644,7 +644,7 @@ function TicketsPageContent() {
       const customEvent = event as CustomEvent<CreateTicketSubmitDetail>;
       void (async () => {
         const created = await handleCreateTicket(customEvent.detail.payload);
-        let ok = Boolean(created?.id);
+        const ok = Boolean(created?.id);
         let message: string | undefined;
 
         if (ok && created?.id && customEvent.detail.attachments?.length) {
